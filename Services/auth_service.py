@@ -1,9 +1,11 @@
-"""Business logic for authentication and registration."""
+print(">>> auth_service.py V2 <<<")
+
 from Repositories.user_repository import UserRepository
 from Services.security import hash_password, verify_password
 from Models.user import User, UserRole
 
-# Map the UI role string (from user_type_screen) → UserRole enum
+
+# Map the role string emitted by the User Type screen → UserRole enum
 _ROLE_LOOKUP = {
     "Administrator":     UserRole.ADMIN,
     "Property Manager":  UserRole.MANAGER,
@@ -13,11 +15,14 @@ _ROLE_LOOKUP = {
     "User":              UserRole.TENANT,
 }
 
+
 class AuthService:
     def __init__(self):
         self.users = UserRepository()
 
-    def authenticate(self, identifier: str, password: str, expected_role: str | None = None):
+    # ------------------------------------------------------------------ auth
+    def authenticate(self, identifier: str, password: str,
+                     expected_role: str | None = None):
         """
         Returns (success: bool, user_dict | None, error_message | None)
         """
@@ -26,16 +31,19 @@ class AuthService:
 
         user = self.users.find_by_login(identifier.strip())
 
+        # 1. User must exist FIRST — before we touch any attribute
+        if user is None:
+            return False, None, "No account found with those details."
+
+        # 2. User must be active
         if user.status == "Inactive":
             return False, None, "This account has been deactivated."
 
-        if not user:
-            return False, None, "No account found with those details."
-
+        # 3. Password must match
         if not verify_password(password, user.password_hash):
             return False, None, "Incorrect password."
 
-        # Role gate — if the user came via a specific role card
+        # 4. Role gate (if a specific role was selected on the UI)
         if expected_role and expected_role in _ROLE_LOOKUP:
             if user.role != _ROLE_LOOKUP[expected_role]:
                 return (False, None,
@@ -51,6 +59,7 @@ class AuthService:
         }
         return True, user_dict, None
 
+    # ------------------------------------------------------------------ register
     def register(self, id_number, name, email, phone, password, role: UserRole):
         """Create a new user with a hashed password."""
         if self.users.find_by_email(email):
