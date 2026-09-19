@@ -1,6 +1,7 @@
-print(">>> report_service.py V1 <<<")
+print(">>> report_service.py V2 <<<")
 
 import os
+import sys
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -16,10 +17,15 @@ from Repositories.payment_repository import PaymentRepository
 from Repositories.maintenance_repository import MaintenanceRepository
 
 
-REPORTS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "Documentation", "reports"
-)
+def _reports_dir():
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, "Documentation", "reports")
+
+
+REPORTS_DIR = _reports_dir()
 
 
 class ReportService:
@@ -31,7 +37,7 @@ class ReportService:
         os.makedirs(REPORTS_DIR, exist_ok=True)
 
     # ------------------------------------------------------------------ public
-    def generate_property_report(self) -> tuple[bool, str]:
+    def generate_property_report(self):
         rows = self.properties.list_all()
         headers = ["ID", "Address", "Type", "Status", "Build Details"]
         data = [[
@@ -43,7 +49,7 @@ class ReportService:
         ] for p in rows]
         return self._build_pdf("Property Report", headers, data)
 
-    def generate_payment_report(self) -> tuple[bool, str]:
+    def generate_payment_report(self):
         rows = self.payments.list_all()
         headers = ["ID", "Lease", "Amount", "Due", "Paid", "Status"]
         data = [[
@@ -56,7 +62,7 @@ class ReportService:
         ] for p in rows]
         return self._build_pdf("Payment Report", headers, data)
 
-    def generate_lease_report(self) -> tuple[bool, str]:
+    def generate_lease_report(self):
         rows = self.leases.list_all()
         headers = ["ID", "Property", "Tenant", "Start", "End", "Rent", "Status"]
         data = [[
@@ -70,7 +76,7 @@ class ReportService:
         ] for l in rows]
         return self._build_pdf("Lease Report", headers, data)
 
-    def generate_maintenance_report(self) -> tuple[bool, str]:
+    def generate_maintenance_report(self):
         rows = self.maintenance.list_all()
         headers = ["ID", "Property", "Submitter", "Priority", "Status", "Created"]
         data = [[
@@ -83,8 +89,7 @@ class ReportService:
         ] for m in rows]
         return self._build_pdf("Maintenance Report", headers, data)
 
-    def generate_summary_report(self) -> tuple[bool, str]:
-        """One-page executive summary with counts across all entities."""
+    def generate_summary_report(self):
         props = self.properties.list_all()
         leases = self.leases.list_all()
         payments = self.payments.list_all()
@@ -108,8 +113,7 @@ class ReportService:
         return self._build_pdf("Executive Summary Report", headers, data)
 
     # ------------------------------------------------------------------ internals
-    def _build_pdf(self, title: str, headers: list[str],
-                   data: list[list[str]]) -> tuple[bool, str]:
+    def _build_pdf(self, title, headers, data):
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             safe_title = title.replace(" ", "_")
@@ -148,9 +152,7 @@ class ReportService:
                 ))
             else:
                 table_data = [headers] + data
-                col_count = len(headers)
                 table = Table(table_data, repeatRows=1)
-
                 style = TableStyle([
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3498db")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
