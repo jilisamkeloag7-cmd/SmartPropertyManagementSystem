@@ -1,6 +1,7 @@
 """Controller — bridges UI events to AuthService."""
 from Services.auth_service import AuthService
 
+
 class AuthController:
     def __init__(self):
         self.service = AuthService()

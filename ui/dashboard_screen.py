@@ -97,12 +97,12 @@ class DashboardScreen(QWidget):
         action_grid.setSpacing(15)
 
         actions = [
-            ("🏠", "Properties"),
-            ("📄", "Leases"),
-            ("💰", "Payments"),
-            ("🔧", "Maintenance"),
+            ("🏠", "Properties", self._open_properties),
+            ("📄", "Leases",     None),
+            ("💰", "Payments",   None),
+            ("🔧", "Maintenance", None),
         ]
-        for i, (icon, label) in enumerate(actions):
+        for i, (icon, label, handler) in enumerate(actions):
             b = QPushButton(f"{icon}\n{label}")
             b.setFixedSize(170, 90)
             b.setStyleSheet("""
@@ -118,6 +118,11 @@ class DashboardScreen(QWidget):
                     border-color: #3498db;
                 }
             """)
+            if handler:
+                b.clicked.connect(handler)
+            else:
+                b.setEnabled(False)
+                b.setToolTip("Coming soon")
             action_grid.addWidget(b, i // 2, i % 2)
 
         layout.addLayout(action_grid)
@@ -162,8 +167,13 @@ class DashboardScreen(QWidget):
 
         self.setLayout(layout)
 
+     
+
     # ------------------------------------------------------------- handlers
     def _handle_logout(self):
         self.user_data = None
         self.parent_window.login_screen.clear_fields()
         self.parent_window.stacked_widget.setCurrentIndex(0)
+
+    def _open_properties(self):
+        self.parent_window.show_properties()    
