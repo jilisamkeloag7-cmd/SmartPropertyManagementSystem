@@ -1,3 +1,5 @@
+print(">>> main_window.py V3 <<<")
+
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 from ui.welcome_screen import WelcomeScreen
 from ui.user_type_screen import UserTypeScreen
@@ -5,6 +7,7 @@ from ui.login_screen import LoginScreen
 from ui.dashboard_screen import DashboardScreen
 from ui.properties_screen import PropertiesScreen
 from ui.users_screen import UsersScreen
+from ui.leases_screen import LeasesScreen
 from ui.styles import apply_styles
 
 
@@ -22,21 +25,22 @@ class MainWindow(QMainWindow):
         self.stacked_widget = QStackedWidget()
         self.layout.addWidget(self.stacked_widget)
 
-        # Screens
         self.welcome_screen    = WelcomeScreen(self)
         self.user_type_screen  = UserTypeScreen(self)
         self.login_screen      = LoginScreen(self)
         self.dashboard_screen  = DashboardScreen(self)
         self.properties_screen = PropertiesScreen(self)
         self.users_screen      = UsersScreen(self)
+        self.leases_screen     = LeasesScreen(self)
 
-        # Index map: 0 Welcome, 1 UserType, 2 Login, 3 Dashboard, 4 Properties, 5 Users
+        # 0 Welcome, 1 UserType, 2 Login, 3 Dashboard, 4 Properties, 5 Users, 6 Leases
         self.stacked_widget.addWidget(self.welcome_screen)
         self.stacked_widget.addWidget(self.user_type_screen)
         self.stacked_widget.addWidget(self.login_screen)
         self.stacked_widget.addWidget(self.dashboard_screen)
         self.stacked_widget.addWidget(self.properties_screen)
         self.stacked_widget.addWidget(self.users_screen)
+        self.stacked_widget.addWidget(self.leases_screen)
 
         self.stacked_widget.setCurrentIndex(0)
         apply_styles(self)
@@ -60,3 +64,7 @@ class MainWindow(QMainWindow):
     def show_users(self):
         self.users_screen.set_user(self.dashboard_screen.user_data)
         self.stacked_widget.setCurrentIndex(5)
+
+    def show_leases(self):
+        self.leases_screen.set_user(self.dashboard_screen.user_data)
+        self.stacked_widget.setCurrentIndex(6)

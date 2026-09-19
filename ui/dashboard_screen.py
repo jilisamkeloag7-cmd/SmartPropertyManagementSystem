@@ -137,8 +137,8 @@ class DashboardScreen(QWidget):
 
         actions = [
             ("🏠", "Properties",  self._open_properties, None),
+            ("📄", "Leases",      self._open_leases,     None),
             ("👥", "Users",       self._open_users,      "Administrator"),
-            ("📄", "Leases",      None,                  None),
             ("💰", "Payments",    None,                  None),
             ("🔧", "Maintenance", None,                  None),
         ]
@@ -182,3 +182,6 @@ class DashboardScreen(QWidget):
 
     def _open_users(self):
         self.parent_window.show_users()
+
+    def _open_leases(self):
+        self.parent_window.show_leases()    
