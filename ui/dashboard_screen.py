@@ -1,4 +1,4 @@
-print(">>> dashboard_screen.py V3 <<<")
+print(">>> dashboard_screen.py V4 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QFrame, QGridLayout)
@@ -20,6 +20,7 @@ class DashboardScreen(QWidget):
         email = user_data.get("email", "")
         self.welcome_label.setText(f"Welcome back, {name}")
         self.role_label.setText(f"Role: {role}  •  {email}")
+        self._rebuild_actions()
 
     # ------------------------------------------------------------- UI
     def setup_ui(self):
@@ -27,13 +28,10 @@ class DashboardScreen(QWidget):
         layout.setContentsMargins(30, 30, 30, 30)
         layout.setSpacing(20)
 
-        # ---------------- Header
         header = QHBoxLayout()
 
         title = QLabel("🏢 Smart Property Management")
-        title.setStyleSheet(
-            "font-size: 22px; font-weight: bold; color: #2c3e50;"
-        )
+        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #2c3e50;")
         header.addWidget(title)
         header.addStretch()
 
@@ -55,7 +53,6 @@ class DashboardScreen(QWidget):
         )
         header.addWidget(btn_profile)
 
-        # ---- Logout button (created BEFORE connecting)
         btn_logout = QPushButton("Logout")
         btn_logout.setStyleSheet("""
             QPushButton {
@@ -69,65 +66,29 @@ class DashboardScreen(QWidget):
             }
             QPushButton:hover { background-color: #c0392b; }
         """)
-        btn_logout.clicked.connect(self._handle_logout)   # connect AFTER creation
+        btn_logout.clicked.connect(self._handle_logout)
         header.addWidget(btn_logout)
 
         layout.addLayout(header)
 
-        # ---------------- Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
         sep.setStyleSheet("background-color: #ecf0f1;")
         layout.addWidget(sep)
 
-        # ---------------- Role line
         self.role_label = QLabel("Role: User")
         self.role_label.setStyleSheet("color: #7f8c8d; font-size: 14px;")
         layout.addWidget(self.role_label)
 
-        # ---------------- Quick Actions
         layout.addSpacing(20)
         quick = QLabel("Quick Actions")
-        quick.setStyleSheet(
-            "font-size: 18px; font-weight: bold; color: #2c3e50;"
-        )
+        quick.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
         layout.addWidget(quick)
 
-        action_grid = QGridLayout()
-        action_grid.setSpacing(15)
+        self.action_grid = QGridLayout()
+        self.action_grid.setSpacing(15)
+        layout.addLayout(self.action_grid)
 
-        actions = [
-            ("🏠", "Properties", self._open_properties),
-            ("📄", "Leases",     None),
-            ("💰", "Payments",   None),
-            ("🔧", "Maintenance", None),
-        ]
-        for i, (icon, label, handler) in enumerate(actions):
-            b = QPushButton(f"{icon}\n{label}")
-            b.setFixedSize(170, 90)
-            b.setStyleSheet("""
-                QPushButton {
-                    background-color: white;
-                    border: 2px solid #ecf0f1;
-                    border-radius: 12px;
-                    font-size: 15px;
-                    color: #2c3e50;
-                }
-                QPushButton:hover {
-                    background-color: #f8f9fa;
-                    border-color: #3498db;
-                }
-            """)
-            if handler:
-                b.clicked.connect(handler)
-            else:
-                b.setEnabled(False)
-                b.setToolTip("Coming soon")
-            action_grid.addWidget(b, i // 2, i % 2)
-
-        layout.addLayout(action_grid)
-
-        # ---------------- Activity + Notifications
         layout.addSpacing(30)
         bottom = QHBoxLayout()
         bottom.setSpacing(20)
@@ -164,10 +125,51 @@ class DashboardScreen(QWidget):
         bottom.addWidget(notif_frame)
 
         layout.addLayout(bottom)
-
         self.setLayout(layout)
 
-     
+    # ------------------------------------------------------------- actions grid
+    def _rebuild_actions(self):
+        while self.action_grid.count():
+            item = self.action_grid.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        actions = [
+            ("🏠", "Properties",  self._open_properties, None),
+            ("👥", "Users",       self._open_users,      "Administrator"),
+            ("📄", "Leases",      None,                  None),
+            ("💰", "Payments",    None,                  None),
+            ("🔧", "Maintenance", None,                  None),
+        ]
+
+        current_role = (self.user_data or {}).get("role", "")
+        pos = 0
+        for icon, label, handler, required_role in actions:
+            if required_role and current_role != required_role:
+                continue
+            b = QPushButton(f"{icon}\n{label}")
+            b.setFixedSize(170, 90)
+            b.setStyleSheet("""
+                QPushButton {
+                    background-color: white;
+                    border: 2px solid #ecf0f1;
+                    border-radius: 12px;
+                    font-size: 15px;
+                    color: #2c3e50;
+                }
+                QPushButton:hover {
+                    background-color: #f8f9fa;
+                    border-color: #3498db;
+                }
+            """)
+            if handler:
+                b.clicked.connect(handler)
+            else:
+                b.setEnabled(False)
+                b.setToolTip("Coming soon")
+            self.action_grid.addWidget(b, pos // 2, pos % 2)
+            pos += 1
 
     # ------------------------------------------------------------- handlers
     def _handle_logout(self):
@@ -176,4 +178,7 @@ class DashboardScreen(QWidget):
         self.parent_window.stacked_widget.setCurrentIndex(0)
 
     def _open_properties(self):
-        self.parent_window.show_properties()    
+        self.parent_window.show_properties()
+
+    def _open_users(self):
+        self.parent_window.show_users()

@@ -25,6 +25,10 @@ class AuthService:
             return False, None, "Please enter both your ID/email and password."
 
         user = self.users.find_by_login(identifier.strip())
+
+        if user.status == "Inactive":
+            return False, None, "This account has been deactivated."
+
         if not user:
             return False, None, "No account found with those details."
 
