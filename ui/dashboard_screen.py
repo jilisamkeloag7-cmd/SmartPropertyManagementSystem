@@ -1,4 +1,4 @@
-print(">>> dashboard_screen.py V4 <<<")
+print(">>> dashboard_screen.py V7 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QFrame, QGridLayout)
@@ -31,7 +31,9 @@ class DashboardScreen(QWidget):
         header = QHBoxLayout()
 
         title = QLabel("🏢 Smart Property Management")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #2c3e50;")
+        title.setStyleSheet(
+            "font-size: 22px; font-weight: bold; color: #2c3e50;"
+        )
         header.addWidget(title)
         header.addStretch()
 
@@ -82,7 +84,9 @@ class DashboardScreen(QWidget):
 
         layout.addSpacing(20)
         quick = QLabel("Quick Actions")
-        quick.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        quick.setStyleSheet(
+            "font-size: 18px; font-weight: bold; color: #2c3e50;"
+        )
         layout.addWidget(quick)
 
         self.action_grid = QGridLayout()
@@ -136,18 +140,28 @@ class DashboardScreen(QWidget):
                 w.deleteLater()
 
         actions = [
-            ("🏠", "Properties",  self._open_properties, None),
-            ("📄", "Leases",      self._open_leases,     None),
-            ("👥", "Users",       self._open_users,      "Administrator"),
-            ("💰", "Payments",    None,                  None),
-            ("🔧", "Maintenance", None,                  None),
+            ("🏠", "Properties",  self._open_properties,  None),
+            ("📄", "Leases",      self._open_leases,      None),
+            ("💰", "Payments",    self._open_payments,    None),
+            ("🔧", "Maintenance", self._open_maintenance, None),
+            ("🔑", "Ownership",   self._open_ownerships,  "Owner"),
+            ("👥", "Users",       self._open_users,       "Administrator"),
         ]
 
+        # Ownership is visible to Administrator, Property Manager and Owner.
+        # The tile's required_role is "Owner" — but Admin/Manager also see it.
         current_role = (self.user_data or {}).get("role", "")
+        role_overrides = {
+            "Ownership": {"Administrator", "Property Manager", "Owner"},
+        }
+
         pos = 0
         for icon, label, handler, required_role in actions:
-            if required_role and current_role != required_role:
-                continue
+            if required_role:
+                allowed = role_overrides.get(label, {required_role})
+                if current_role not in allowed:
+                    continue
+
             b = QPushButton(f"{icon}\n{label}")
             b.setFixedSize(170, 90)
             b.setStyleSheet("""
@@ -180,8 +194,17 @@ class DashboardScreen(QWidget):
     def _open_properties(self):
         self.parent_window.show_properties()
 
+    def _open_leases(self):
+        self.parent_window.show_leases()
+
+    def _open_payments(self):
+        self.parent_window.show_payments()
+
+    def _open_maintenance(self):
+        self.parent_window.show_maintenance()
+
+    def _open_ownerships(self):
+        self.parent_window.show_ownerships()
+
     def _open_users(self):
         self.parent_window.show_users()
-
-    def _open_leases(self):
-        self.parent_window.show_leases()    
