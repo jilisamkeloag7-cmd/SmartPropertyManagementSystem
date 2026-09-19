@@ -1,4 +1,4 @@
-print(">>> main_window.py V6 <<<")
+print(">>> main_window.py V7 <<<")
 
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 from ui.welcome_screen import WelcomeScreen
@@ -11,6 +11,7 @@ from ui.leases_screen import LeasesScreen
 from ui.payments_screen import PaymentsScreen
 from ui.maintenance_screen import MaintenanceScreen
 from ui.ownerships_screen import OwnershipsScreen
+from ui.reports_screen import ReportsScreen
 from ui.styles import apply_styles
 
 
@@ -38,9 +39,10 @@ class MainWindow(QMainWindow):
         self.payments_screen    = PaymentsScreen(self)
         self.maintenance_screen = MaintenanceScreen(self)
         self.ownerships_screen  = OwnershipsScreen(self)
+        self.reports_screen     = ReportsScreen(self)
 
         # 0 Welcome, 1 UserType, 2 Login, 3 Dashboard, 4 Properties,
-        # 5 Users, 6 Leases, 7 Payments, 8 Maintenance, 9 Ownership
+        # 5 Users, 6 Leases, 7 Payments, 8 Maintenance, 9 Ownership, 10 Reports
         self.stacked_widget.addWidget(self.welcome_screen)
         self.stacked_widget.addWidget(self.user_type_screen)
         self.stacked_widget.addWidget(self.login_screen)
@@ -51,6 +53,7 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.payments_screen)
         self.stacked_widget.addWidget(self.maintenance_screen)
         self.stacked_widget.addWidget(self.ownerships_screen)
+        self.stacked_widget.addWidget(self.reports_screen)
 
         self.stacked_widget.setCurrentIndex(0)
         apply_styles(self)
@@ -90,3 +93,7 @@ class MainWindow(QMainWindow):
     def show_ownerships(self):
         self.ownerships_screen.set_user(self.dashboard_screen.user_data)
         self.stacked_widget.setCurrentIndex(9)
+
+    def show_reports(self):
+        self.reports_screen.set_user(self.dashboard_screen.user_data)
+        self.stacked_widget.setCurrentIndex(10)
