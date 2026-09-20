@@ -1,50 +1,53 @@
-print(">>> ownership_form_dialog.py V1 <<<")
+print(">>> ownership_form_dialog.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
     QDateEdit, QDialogButtonBox, QLabel, QMessageBox, QCheckBox
 )
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 from Repositories.property_repository import PropertyRepository
 from Repositories.user_repository import UserRepository
 from Models.user import UserRole
+from ui import theme
 
 
 class OwnershipFormDialog(QDialog):
-    """Modal for adding a new ownership record."""
-
     def __init__(self, parent=None, preselected_property_id: int | None = None):
         super().__init__(parent)
-        self.setWindowTitle("Add Ownership")
-        self.setFixedSize(500, 480)
-        self.setStyleSheet("""
-            QDialog { background: #f0f4f8; }
-            QLabel { color: #2c3e50; font-size: 13px; }
-            QLineEdit, QComboBox, QDateEdit {
-                padding: 8px 10px; border: 2px solid #ecf0f1;
-                border-radius: 8px; font-size: 13px; background: white;
-            }
-            QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
-                border-color: #3498db;
-            }
-        """)
         self.preselected_property_id = preselected_property_id
+        self.setWindowTitle("Add Ownership")
+        self.setFixedSize(520, 520)
+        self.setStyleSheet(f"""
+            QDialog {{ background: {theme.BG_APP}; }}
+            QLabel {{ color: {theme.TEXT_MAIN}; font-size: {theme.FS_BASE}px; }}
+        """)
         self._build()
 
     def _build(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(28, 26, 28, 26)
+        layout.setSpacing(16)
 
         title = QLabel("Add Ownership")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        title.setStyleSheet(
+            f"font-size: {theme.FS_XL}px; font-weight: bold; color: {theme.TEXT_MAIN};"
+        )
         layout.addWidget(title)
 
-        form = QFormLayout()
-        form.setSpacing(10)
+        subtitle = QLabel("Link an owner to a property with their share")
+        subtitle.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
+        )
+        layout.addWidget(subtitle)
 
-        # Property dropdown (non-archived)
+        layout.addSpacing(4)
+
+        form = QFormLayout()
+        form.setSpacing(12)
+        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
         self.property_combo = QComboBox()
+        self.property_combo.setFixedHeight(40)
         prop_repo = PropertyRepository()
         for p in prop_repo.list_all():
             if p.status == "Archived":
@@ -52,16 +55,16 @@ class OwnershipFormDialog(QDialog):
             self.property_combo.addItem(
                 f"#{p.property_id} — {p.address}", p.property_id
             )
-        # Preselect if requested
         if self.preselected_property_id is not None:
             for i in range(self.property_combo.count()):
                 if self.property_combo.itemData(i) == self.preselected_property_id:
                     self.property_combo.setCurrentIndex(i)
                     break
-        form.addRow("Property *", self.property_combo)
+        self.property_combo.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Property"), self.property_combo)
 
-        # Owner dropdown (only Owner role, active users)
         self.owner_combo = QComboBox()
+        self.owner_combo.setFixedHeight(40)
         user_repo = UserRepository()
         for u in user_repo.list_all():
             if u.role != UserRole.OWNER:
@@ -69,31 +72,37 @@ class OwnershipFormDialog(QDialog):
             if u.status != "Active":
                 continue
             self.owner_combo.addItem(f"{u.name} ({u.email})", u.user_id)
-        form.addRow("Owner *", self.owner_combo)
+        self.owner_combo.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Owner"), self.owner_combo)
 
-        # Share (0–1)
         self.share = QLineEdit()
         self.share.setPlaceholderText("0.5 = 50%")
-        form.addRow("Ownership Share *", self.share)
+        self.share.setFixedHeight(40)
+        self.share.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Ownership Share"), self.share)
 
-        # Start date
         self.start_date = QDateEdit()
         self.start_date.setCalendarPopup(True)
         self.start_date.setDate(QDate.currentDate())
         self.start_date.setDisplayFormat("yyyy-MM-dd")
-        form.addRow("Start Date *", self.start_date)
+        self.start_date.setFixedHeight(40)
+        self.start_date.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Start Date"), self.start_date)
 
-        # Has end date?
         self.has_end = QCheckBox("Has an end date (closed ownership)")
+        self.has_end.setStyleSheet(
+            f"color: {theme.TEXT_MAIN}; font-size: {theme.FS_BASE}px;"
+        )
         form.addRow("", self.has_end)
 
-        # End date (disabled until checkbox)
         self.end_date = QDateEdit()
         self.end_date.setCalendarPopup(True)
         self.end_date.setDate(QDate.currentDate().addYears(1))
         self.end_date.setDisplayFormat("yyyy-MM-dd")
+        self.end_date.setFixedHeight(40)
         self.end_date.setEnabled(False)
-        form.addRow("End Date", self.end_date)
+        self.end_date.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("End Date"), self.end_date)
 
         self.has_end.toggled.connect(self.end_date.setEnabled)
 
@@ -101,17 +110,30 @@ class OwnershipFormDialog(QDialog):
         layout.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Save).setStyleSheet(
-            "background-color: #3498db; color: white; border: none; "
-            "border-radius: 8px; padding: 8px 18px; font-weight: bold;"
-        )
-        buttons.button(QDialogButtonBox.Cancel).setStyleSheet(
-            "background-color: #ecf0f1; color: #2c3e50; border: none; "
-            "border-radius: 8px; padding: 8px 18px; font-weight: bold;"
-        )
+        save_btn = buttons.button(QDialogButtonBox.Save)
+        save_btn.setText("Save")
+        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.setFixedHeight(40)
+        save_btn.setStyleSheet(theme.button_qss("primary"))
+
+        cancel_btn = buttons.button(QDialogButtonBox.Cancel)
+        cancel_btn.setText("Cancel")
+        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn.setFixedHeight(40)
+        cancel_btn.setStyleSheet(theme.button_qss("secondary"))
+
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    @staticmethod
+    def _label(text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; "
+            f"font-size: {theme.FS_SM}px; font-weight: bold;"
+        )
+        return lbl
 
     def _on_accept(self):
         if self.property_combo.count() == 0:
