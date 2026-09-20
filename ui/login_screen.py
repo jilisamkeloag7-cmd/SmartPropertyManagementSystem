@@ -263,8 +263,7 @@ class LoginScreen(QWidget):
 
     def _go_back(self):
         self.clear_fields()
-        self.parent_window.stacked_widget.setCurrentIndex(1)
-
+        self.parent_window._set_screen("user_type")
     # ------------------------------------------------------------- auth
     def handle_login(self):
         identifier = self.email_input.text().strip()

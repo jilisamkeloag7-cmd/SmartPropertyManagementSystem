@@ -241,7 +241,7 @@ class MaintenanceScreen(QWidget):
         return int(item.text()) if item else None
 
     def _go_dashboard(self):
-        self.parent_window.stacked_widget.setCurrentIndex(3)
+        self.parent_window._set_screen("dashboard")
 
     def _on_add(self):
         dlg = MaintenanceFormDialog(self, session_user=self.user_data)

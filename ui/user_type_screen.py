@@ -169,4 +169,4 @@ class UserTypeScreen(QWidget):
         self.parent_window.show_login(role)
 
     def _go_back(self):
-        self.parent_window.stacked_widget.setCurrentIndex(0)
+        self.parent_window._set_screen("welcome")

@@ -357,8 +357,7 @@ class DashboardScreen(QWidget):
     # ------------------------------------------------------------- handlers
     def _handle_logout(self):
         self.user_data = None
-        self.parent_window.login_screen.clear_fields()
-        self.parent_window.stacked_widget.setCurrentIndex(0)
+        self.parent_window._on_sidebar_logout()
 
     def _open_properties(self):
         self.parent_window.show_properties()

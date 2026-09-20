@@ -358,7 +358,7 @@ class PropertiesScreen(QWidget):
 
     # ------------------------------------------------------------------ handlers
     def _go_dashboard(self):
-        self.parent_window.stacked_widget.setCurrentIndex(3)
+        self.parent_window._set_screen("dashboard")
 
     def _on_add(self):
         dlg = PropertyFormDialog(self, property_data=None)
