@@ -1,7 +1,8 @@
-print(">>> main_window.py V8 <<<")
+print(">>> main_window.py V9 <<<")
 
 from PySide6.QtWidgets import (QMainWindow, QStackedWidget, QVBoxLayout,
-                                QHBoxLayout, QWidget)
+                                QHBoxLayout, QWidget, QGraphicsOpacityEffect)
+from PySide6.QtCore import QPropertyAnimation, QEasingCurve
 from ui.welcome_screen import WelcomeScreen
 from ui.user_type_screen import UserTypeScreen
 from ui.login_screen import LoginScreen
@@ -17,7 +18,6 @@ from ui.widgets.sidebar import Sidebar
 from ui.styles import apply_styles
 
 
-# Screen index map
 SCREENS = {
     "welcome":     0,
     "user_type":   1,
@@ -32,7 +32,6 @@ SCREENS = {
     "reports":     10,
 }
 
-# Screens where the sidebar is visible
 AUTHENTICATED_SCREENS = {
     "dashboard", "properties", "users", "leases",
     "payments", "maintenance", "ownerships", "reports",
@@ -45,13 +44,15 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Smart Property Management System")
         self.setGeometry(100, 100, 1100, 720)
 
+        self._anim = None   # keep reference so Qt doesn't GC the animation
+
         central = QWidget()
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ---- Sidebar (hidden until login)
+        # ---- Sidebar
         self.sidebar = Sidebar(
             self,
             on_navigate=self._on_sidebar_navigate,
@@ -92,11 +93,47 @@ class MainWindow(QMainWindow):
         self.stacked_widget.setCurrentIndex(0)
         apply_styles(self)
 
+    # ------------------------------------------------------------------ transition
+    def _animate_transition(self):
+        """Fade the current widget in. Safe to call on every screen change."""
+        current = self.stacked_widget.currentWidget()
+        if current is None:
+            return
+
+        # Cancel any animation still running
+        if self._anim is not None:
+            try:
+                self._anim.stop()
+            except RuntimeError:
+                pass
+
+        effect = QGraphicsOpacityEffect(current)
+        current.setGraphicsEffect(effect)
+
+        anim = QPropertyAnimation(effect, b"opacity", self)
+        anim.setDuration(180)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        def _cleanup():
+            try:
+                current.setGraphicsEffect(None)
+            except RuntimeError:
+                pass
+
+        anim.finished.connect(_cleanup)
+        self._anim = anim
+        anim.start(QPropertyAnimation.DeleteWhenStopped)
+
     # ------------------------------------------------------------------ nav
     def _set_screen(self, key: str):
-        """Set current screen by key and sync sidebar visibility + active state."""
         idx = SCREENS.get(key)
         if idx is None:
+            return
+
+        # Skip animation for the very first screen (startup)
+        if self.stacked_widget.currentIndex() == idx and self.stacked_widget.isVisible():
             return
 
         self.stacked_widget.setCurrentIndex(idx)
@@ -106,6 +143,8 @@ class MainWindow(QMainWindow):
             self.sidebar.set_active(key)
         else:
             self.sidebar.setVisible(False)
+
+        self._animate_transition()
 
     def show_user_type(self):
         self._set_screen("user_type")
@@ -154,7 +193,6 @@ class MainWindow(QMainWindow):
         if not user:
             return
 
-        # Each screen's set_user re-triggers refresh
         navigators = {
             "dashboard":   lambda: self.show_dashboard(user),
             "properties":  self.show_properties,
