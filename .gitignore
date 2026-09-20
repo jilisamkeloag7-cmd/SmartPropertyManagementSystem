@@ -7,3 +7,12 @@ Database/*.sqlite
 *.log
 .vscode/
 .idea/
+
+# PyInstaller build artefacts
+build/
+dist/
+*.spec
+*.spec.bak
+__pycache__/
+*.pyc
+.env
