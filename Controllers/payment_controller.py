@@ -1,4 +1,4 @@
-print(">>> payment_controller.py V1 <<<")
+print(">>> payment_controller.py V2 <<<")
 
 from Services.payment_service import PaymentService
 
@@ -7,8 +7,8 @@ class PaymentController:
     def __init__(self):
         self.service = PaymentService()
 
-    def list(self, filters: dict | None = None):
-        return self.service.list_payments(filters)
+    def list(self, filters: dict | None = None, session_user: dict | None = None):
+        return self.service.list_payments(filters, session_user)
 
     def get(self, payment_id: int):
         return self.service.get_payment(payment_id)

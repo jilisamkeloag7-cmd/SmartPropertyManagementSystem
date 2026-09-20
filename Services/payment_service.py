@@ -1,10 +1,11 @@
-print(">>> payment_service.py V1 <<<")
+print(">>> payment_service.py V2 <<<")
 
 from datetime import date
 from Repositories.payment_repository import PaymentRepository
 from Repositories.lease_repository import LeaseRepository
 from Repositories.property_repository import PropertyRepository
 from Repositories.user_repository import UserRepository
+from Repositories.ownership_repository import OwnershipRepository
 from Services.notification_service import NotificationService
 
 
@@ -17,6 +18,7 @@ class PaymentService:
         self.leases = LeaseRepository()
         self.properties = PropertyRepository()
         self.users = UserRepository()
+        self.ownerships = OwnershipRepository()
         self.notifications = NotificationService()
 
     # ------------------------------------------------------------------ helpers
@@ -49,12 +51,32 @@ class PaymentService:
         return self._to_dict(payment, lease, prop, tenant)
 
     # ------------------------------------------------------------------ reads
-    def list_payments(self, filters: dict | None = None):
+    def list_payments(self, filters: dict | None = None,
+                      session_user: dict | None = None):
         filters = filters or {}
         status_filter = filters.get("status", "All")
         query = (filters.get("query") or "").strip().lower()
 
         rows = self.payments.list_all()
+
+        # -------- role-based visibility filter
+        role = (session_user or {}).get("role", "")
+        uid = (session_user or {}).get("user_id")
+
+        if role == "Tenant" and uid:
+            allowed_lease_ids = {l.lease_id for l in self.leases.list_for_tenant(uid)}
+            rows = [p for p in rows if p.lease_id in allowed_lease_ids]
+        elif role == "Owner" and uid:
+            owned_pids = set(self.ownerships.property_ids_for_owner(uid))
+            allowed_lease_ids = set()
+            for p in rows:
+                lease = self.leases.find_by_id(p.lease_id)
+                if lease and lease.property_id in owned_pids:
+                    allowed_lease_ids.add(p.lease_id)
+            rows = [p for p in rows if p.lease_id in allowed_lease_ids]
+        # Admin/Manager: no additional filtering
+
+        # -------- user-driven filters
         out = []
         for p in rows:
             d = self._enrich(p)
@@ -120,11 +142,6 @@ class PaymentService:
         return True, f"Payment #{payment_id} marked as Paid."
 
     def check_overdue(self) -> int:
-        """
-        Scan pending payments, transition past-due ones to Overdue,
-        and emit a notification to the tenant.
-        Returns the number of newly overdue payments.
-        """
         today = date.today()
         newly_overdue = 0
 
