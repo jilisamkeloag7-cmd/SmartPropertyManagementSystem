@@ -1,4 +1,4 @@
-print(">>> user_service.py V1 <<<")
+print(">>> user_service.py V2 <<<")
 
 from Repositories.user_repository import UserRepository
 from Services.security import hash_password
@@ -52,10 +52,9 @@ class UserService:
         if not ok:
             return False, err
 
-        # ---- validate
         name = (data.get("name") or "").strip()
         id_number = (data.get("id_number") or "").strip()
-        email = (data.get("email") or "").strip()
+        email = (data.get("email") or "").strip().lower()
         phone = (data.get("phone") or "").strip()
         password = data.get("password") or ""
         role_str = data.get("role")
@@ -99,7 +98,7 @@ class UserService:
             return False, err
 
         name = (data.get("name") or "").strip()
-        email = (data.get("email") or "").strip()
+        email = (data.get("email") or "").strip().lower()
         phone = (data.get("phone") or "").strip()
         role_str = data.get("role")
         status = data.get("status", "Active")
@@ -113,7 +112,6 @@ class UserService:
         if status not in VALID_STATUSES:
             return False, f"Status must be one of: {', '.join(sorted(VALID_STATUSES))}."
 
-        # email uniqueness (excluding self)
         existing = self.users.find_by_email(email)
         if existing and existing.user_id != user_id:
             return False, "Another account already uses that email."
@@ -130,7 +128,6 @@ class UserService:
         ok, err = self._assert_admin(session_user)
         if not ok:
             return False, err
-        # Prevent admin from deactivating themselves
         if session_user.get("user_id") == user_id:
             return False, "You cannot deactivate your own account."
         ok = self.users.deactivate(user_id)
@@ -150,6 +147,7 @@ class UserService:
         if session_user.get("user_id") == user_id:
             return False, "You cannot delete your own account."
         if self.users.has_active_links(user_id):
-            return False, "Cannot delete: user has linked leases, ownerships or maintenance records. Deactivate instead."
+            return False, ("Cannot delete: user has linked leases, ownerships "
+                           "or maintenance records. Deactivate instead.")
         ok = self.users.delete(user_id)
         return (True, "User deleted.") if ok else (False, "User not found.")

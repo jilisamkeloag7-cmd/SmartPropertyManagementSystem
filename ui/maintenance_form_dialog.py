@@ -1,47 +1,53 @@
-print(">>> maintenance_form_dialog.py V1 <<<")
+print(">>> maintenance_form_dialog.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QTextEdit,
     QComboBox, QDialogButtonBox, QLabel, QMessageBox
 )
+from PySide6.QtCore import Qt
 from Repositories.property_repository import PropertyRepository
 from Repositories.lease_repository import LeaseRepository
 from Services.maintenance_service import VALID_PRIORITIES
+from ui import theme
 
 
 class MaintenanceFormDialog(QDialog):
-    """Submit a new maintenance request."""
-
     def __init__(self, parent=None, session_user=None):
         super().__init__(parent)
         self.session_user = session_user or {}
         self.setWindowTitle("New Maintenance Request")
-        self.setFixedSize(500, 420)
-        self.setStyleSheet("""
-            QDialog { background: #f0f4f8; }
-            QLabel { color: #2c3e50; font-size: 13px; }
-            QComboBox, QTextEdit {
-                padding: 8px 10px; border: 2px solid #ecf0f1;
-                border-radius: 8px; font-size: 13px; background: white;
-            }
-            QComboBox:focus, QTextEdit:focus { border-color: #3498db; }
+        self.setFixedSize(520, 460)
+        self.setStyleSheet(f"""
+            QDialog {{ background: {theme.BG_APP}; }}
+            QLabel {{ color: {theme.TEXT_MAIN}; font-size: {theme.FS_BASE}px; }}
         """)
         self._build()
 
     def _build(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(28, 26, 28, 26)
+        layout.setSpacing(16)
 
         title = QLabel("New Maintenance Request")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        title.setStyleSheet(
+            f"font-size: {theme.FS_XL}px; font-weight: bold; color: {theme.TEXT_MAIN};"
+        )
         layout.addWidget(title)
 
-        form = QFormLayout()
-        form.setSpacing(10)
+        subtitle = QLabel("Describe the issue and its urgency")
+        subtitle.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
+        )
+        layout.addWidget(subtitle)
 
-        # Property dropdown — for Tenant: only their leased properties.
+        layout.addSpacing(4)
+
+        form = QFormLayout()
+        form.setSpacing(12)
+        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
         self.property_combo = QComboBox()
+        self.property_combo.setFixedHeight(40)
         role = self.session_user.get("role", "")
         uid = self.session_user.get("user_id")
         prop_repo = PropertyRepository()
@@ -61,37 +67,52 @@ class MaintenanceFormDialog(QDialog):
                     self.property_combo.addItem(
                         f"#{p.property_id} — {p.address}", p.property_id
                     )
-        form.addRow("Property *", self.property_combo)
+        self.property_combo.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Property"), self.property_combo)
 
-        # Priority dropdown
         self.priority_combo = QComboBox()
         self.priority_combo.addItems(sorted(VALID_PRIORITIES))
         self.priority_combo.setCurrentText("Medium")
-        form.addRow("Priority *", self.priority_combo)
+        self.priority_combo.setFixedHeight(40)
+        self.priority_combo.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Priority"), self.priority_combo)
 
-        # Description
         self.description = QTextEdit()
         self.description.setFixedHeight(140)
         self.description.setPlaceholderText(
             "Describe the issue (e.g. leaking kitchen tap, broken window)"
         )
-        form.addRow("Description *", self.description)
+        self.description.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Description"), self.description)
 
         layout.addLayout(form)
         layout.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Save).setStyleSheet(
-            "background-color: #3498db; color: white; border: none; "
-            "border-radius: 8px; padding: 8px 18px; font-weight: bold;"
-        )
-        buttons.button(QDialogButtonBox.Cancel).setStyleSheet(
-            "background-color: #ecf0f1; color: #2c3e50; border: none; "
-            "border-radius: 8px; padding: 8px 18px; font-weight: bold;"
-        )
+        save_btn = buttons.button(QDialogButtonBox.Save)
+        save_btn.setText("Submit")
+        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.setFixedHeight(40)
+        save_btn.setStyleSheet(theme.button_qss("primary"))
+
+        cancel_btn = buttons.button(QDialogButtonBox.Cancel)
+        cancel_btn.setText("Cancel")
+        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn.setFixedHeight(40)
+        cancel_btn.setStyleSheet(theme.button_qss("secondary"))
+
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    @staticmethod
+    def _label(text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; "
+            f"font-size: {theme.FS_SM}px; font-weight: bold;"
+        )
+        return lbl
 
     def _on_accept(self):
         if self.property_combo.count() == 0:

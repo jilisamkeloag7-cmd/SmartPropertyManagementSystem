@@ -1,9 +1,14 @@
-print(">>> login_screen.py V3 <<<")
+print(">>> login_screen.py V4 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                                QLineEdit, QPushButton, QFrame)
+                                QLineEdit, QPushButton, QFrame, QScrollArea)
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QLinearGradient, QBrush, QColor, QPalette
 from Controllers.auth_controller import AuthController
+from ui import theme
+
+
+CARD_W = 440
 
 
 class LoginScreen(QWidget):
@@ -12,173 +17,255 @@ class LoginScreen(QWidget):
         self.parent_window = parent
         self.current_role = "User"
         self.auth = AuthController()
-        self.setup_ui()
+        self._build()
 
+    # ------------------------------------------------------------------ API
     def set_role(self, role):
         self.clear_fields()
         self.current_role = role
         self.role_label.setText(f"Sign in as {role}")
+        # Show a nice accent colour per role in the header
+        self._apply_role_accent(role)
 
     def clear_fields(self):
         self.email_input.clear()
         self.password_input.clear()
         self.error_label.setText("")
         self.password_input.setEchoMode(QLineEdit.Password)
-        self._toggle_label.setText("Show")
+        self._toggle_btn.setText("Show")
 
-    def setup_ui(self):
-        layout = QVBoxLayout()
+    # ------------------------------------------------------------- UI
+    def _build(self):
+        # Gradient background matching Welcome / User Type
+        self.setAutoFillBackground(True)
+        pal = self.palette()
+        grad = QLinearGradient(0, 0, 0, 1)
+        grad.setCoordinateMode(QLinearGradient.ObjectBoundingMode)
+        grad.setColorAt(0.0, QColor("#eff6ff"))
+        grad.setColorAt(1.0, QColor("#f8fafc"))
+        pal.setBrush(QPalette.Window, QBrush(grad))
+        self.setPalette(pal)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(40, 40, 40, 40)
         layout.setAlignment(Qt.AlignCenter)
-        layout.setSpacing(25)
+        layout.setSpacing(0)
 
+        # ============================================================
+        # ROLE INDICATOR
+        # ============================================================
         self.role_label = QLabel("Sign in as User")
         self.role_label.setAlignment(Qt.AlignCenter)
         self.role_label.setStyleSheet(
-            "font-size: 26px; font-weight: bold; color: #2c3e50;"
+            f"font-size: {theme.FS_2XL}px; "
+            f"font-weight: bold; "
+            f"color: {theme.TEXT_MAIN};"
         )
         layout.addWidget(self.role_label)
 
+        layout.addSpacing(theme.SP_6)
+
+        # ============================================================
+        # LOGIN CARD
+        # ============================================================
         card = QFrame()
-        card.setFixedSize(460, 460)
-        card.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border-radius: 18px;
-                border: 1px solid #ecf0f1;
-            }
+        card.setFixedWidth(CARD_W)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {theme.BG_CARD};
+                border-radius: {theme.RADIUS_XL}px;
+                border: 1px solid {theme.BORDER};
+            }}
         """)
         card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(14)
-        card_layout.setContentsMargins(35, 40, 35, 40)
+        card_layout.setContentsMargins(36, 36, 36, 36)
+        card_layout.setSpacing(16)
 
-        # Email / ID
-        card_layout.addWidget(self._label("Email or ID Number"))
+        # ---- Email / ID
+        card_layout.addWidget(self._field_label("Email or ID Number"))
+
         self.email_input = QLineEdit()
         self.email_input.setPlaceholderText("e.g. owner@spm.local")
         self.email_input.setFixedHeight(46)
-        self.email_input.setStyleSheet(self._input_style())
+        self.email_input.setStyleSheet(self._input_qss())
         self.email_input.returnPressed.connect(self.handle_login)
         card_layout.addWidget(self.email_input)
 
-        # Password label
-        card_layout.addWidget(self._label("Password"))
+        card_layout.addSpacing(4)
 
-        # Password row: input + Show/Hide label
-        pwd_row = QHBoxLayout()
-        pwd_row.setSpacing(8)
+        # ---- Password label + Show/Hide toggle
+        pwd_label_row = QHBoxLayout()
+        pwd_label_row.addWidget(self._field_label("Password"))
+        pwd_label_row.addStretch()
+
+        self._toggle_btn = QPushButton("Show")
+        self._toggle_btn.setCursor(Qt.PointingHandCursor)
+        self._toggle_btn.setFixedHeight(24)
+        self._toggle_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {theme.PRIMARY};
+                border: none;
+                font-size: {theme.FS_SM}px;
+                font-weight: bold;
+                padding: 0 4px;
+            }}
+            QPushButton:hover {{
+                color: {theme.PRIMARY_HOVER};
+                text-decoration: underline;
+            }}
+        """)
+        self._toggle_btn.clicked.connect(self._toggle_password)
+        pwd_label_row.addWidget(self._toggle_btn)
+
+        card_layout.addLayout(pwd_label_row)
 
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("Enter your password")
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.setFixedHeight(46)
-        self.password_input.setStyleSheet(self._input_style())
+        self.password_input.setStyleSheet(self._input_qss())
         self.password_input.returnPressed.connect(self.handle_login)
-        pwd_row.addWidget(self.password_input, stretch=1)
+        card_layout.addWidget(self.password_input)
 
-        self._toggle_label = QLabel("Show")
-        self._toggle_label.setAlignment(Qt.AlignCenter)
-        self._toggle_label.setFixedSize(60, 46)
-        self._toggle_label.setCursor(Qt.PointingHandCursor)
-        self._toggle_label.setStyleSheet("""
-            QLabel {
-                color: #3498db;
-                font-size: 13px;
-                font-weight: bold;
-                background-color: #f8fbfe;
-                border: 2px solid #d6e6f3;
-                border-radius: 10px;
-            }
-            QLabel:hover {
-                background-color: #eaf3fb;
-                border-color: #3498db;
-            }
-        """)
-        self._toggle_label.mousePressEvent = self._on_toggle_click
-        pwd_row.addWidget(self._toggle_label, stretch=0)
-
-        card_layout.addLayout(pwd_row)
-
-        # Error label
+        # ---- Error label (reserved height so layout doesn't jump)
         self.error_label = QLabel("")
-        self.error_label.setStyleSheet("color: #e74c3c; font-size: 12px;")
+        self.error_label.setStyleSheet(
+            f"color: {theme.DANGER}; font-size: {theme.FS_SM}px;"
+        )
         self.error_label.setWordWrap(True)
-        self.error_label.setMinimumHeight(28)
+        self.error_label.setMinimumHeight(30)
         card_layout.addWidget(self.error_label)
 
-        # Sign In button
+        card_layout.addSpacing(6)
+
+        # ---- Sign In button
         self.btn_signin = QPushButton("Sign In")
-        self.btn_signin.setFixedHeight(48)
+        self.btn_signin.setCursor(Qt.PointingHandCursor)
+        self.btn_signin.setFixedHeight(50)
         self.btn_signin.setDefault(True)
         self.btn_signin.setAutoDefault(True)
-        self.btn_signin.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db; color: white;
-                border: none; border-radius: 10px;
-                font-size: 16px; font-weight: bold;
-            }
-            QPushButton:hover   { background-color: #2980b9; }
-            QPushButton:pressed { background-color: #2471a3; }
+        self.btn_signin.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {theme.PRIMARY};
+                color: {theme.TEXT_WHITE};
+                border: none;
+                border-radius: {theme.RADIUS_MD}px;
+                font-size: {theme.FS_LG}px;
+                font-weight: bold;
+            }}
+            QPushButton:hover    {{ background-color: {theme.PRIMARY_HOVER}; }}
+            QPushButton:pressed  {{ background-color: {theme.PRIMARY_PRESSED}; }}
         """)
         self.btn_signin.clicked.connect(self.handle_login)
         card_layout.addWidget(self.btn_signin)
 
+        # ---- Forgot password
         btn_forgot = QPushButton("Forgot password?")
-        btn_forgot.setStyleSheet(
-            "background: transparent; color: #7f8c8d; border: none; font-size: 13px;"
-        )
+        btn_forgot.setCursor(Qt.PointingHandCursor)
+        btn_forgot.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {theme.TEXT_MUTED};
+                border: none;
+                font-size: {theme.FS_SM}px;
+                padding: 4px 8px;
+            }}
+            QPushButton:hover {{
+                color: {theme.PRIMARY};
+            }}
+        """)
         card_layout.addWidget(btn_forgot, alignment=Qt.AlignCenter)
 
         layout.addWidget(card, alignment=Qt.AlignCenter)
 
-        # Back
+        layout.addSpacing(theme.SP_6)
+
+        # ============================================================
+        # BACK BUTTON
+        # ============================================================
+        back_row = QHBoxLayout()
+        back_row.addStretch()
+
         btn_back = QPushButton("← Back")
-        btn_back.setFixedSize(100, 35)
-        btn_back.setStyleSheet(
-            "background: transparent; color: #7f8c8d; border: none; font-size: 14px;"
-        )
+        btn_back.setCursor(Qt.PointingHandCursor)
+        btn_back.setFixedHeight(36)
+        btn_back.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {theme.TEXT_MUTED};
+                border: none;
+                font-size: {theme.FS_BASE}px;
+                padding: 4px 12px;
+            }}
+            QPushButton:hover {{
+                color: {theme.PRIMARY};
+            }}
+        """)
         btn_back.clicked.connect(self._go_back)
-        back_layout = QHBoxLayout()
-        back_layout.addWidget(btn_back)
-        back_layout.addStretch()
-        layout.addLayout(back_layout)
+        back_row.addWidget(btn_back)
+        back_row.addStretch()
 
-        self.setLayout(layout)
+        layout.addLayout(back_row)
 
+    # ------------------------------------------------------------- helpers
     @staticmethod
-    def _label(text):
+    def _field_label(text):
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #7f8c8d; font-size: 13px; font-weight: bold;")
+        lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; "
+            f"font-size: {theme.FS_SM}px; "
+            f"font-weight: bold;"
+        )
         return lbl
 
     @staticmethod
-    def _input_style():
-        return """
-            QLineEdit {
-                padding: 0 12px;
-                border: 2px solid #ecf0f1;
-                border-radius: 10px;
-                font-size: 14px;
-                color: #2c3e50;
-                background: white;
-            }
-            QLineEdit:focus { border-color: #3498db; }
+    def _input_qss():
+        return f"""
+            QLineEdit {{
+                padding: 0 14px;
+                border: 2px solid {theme.BORDER};
+                border-radius: {theme.RADIUS_MD}px;
+                font-size: {theme.FS_MD}px;
+                color: {theme.TEXT_MAIN};
+                background: {theme.BG_CARD};
+            }}
+            QLineEdit:focus {{
+                border-color: {theme.PRIMARY};
+            }}
         """
 
-    def _on_toggle_click(self, event):
-        self._toggle_password()
+    def _apply_role_accent(self, role):
+        # Optional: could colour the role label per role. Keeping it simple for now.
+        pass
 
     def _toggle_password(self):
         if self.password_input.echoMode() == QLineEdit.Password:
             self.password_input.setEchoMode(QLineEdit.Normal)
-            self._toggle_label.setText("Hide")
+            self._toggle_btn.setText("Hide")
         else:
             self.password_input.setEchoMode(QLineEdit.Password)
-            self._toggle_label.setText("Show")
+            self._toggle_btn.setText("Show")
 
     def _go_back(self):
         self.clear_fields()
         self.parent_window.stacked_widget.setCurrentIndex(1)
 
+    # ------------------------------------------------------------- auth
     def handle_login(self):
         identifier = self.email_input.text().strip()
         password   = self.password_input.text()
@@ -189,8 +276,9 @@ class LoginScreen(QWidget):
             self.error_label.setText(err or "Login failed.")
             return
 
+        # success — clear password from memory
         self.password_input.clear()
         self.password_input.setEchoMode(QLineEdit.Password)
-        self._toggle_label.setText("Show")
+        self._toggle_btn.setText("Show")
 
         self.parent_window.show_dashboard(user)

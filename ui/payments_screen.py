@@ -1,4 +1,4 @@
-print(">>> payments_screen.py V1 <<<")
+print(">>> payments_screen.py V3 <<<")
 
 from datetime import date
 from PySide6.QtWidgets import (
@@ -7,8 +7,10 @@ from PySide6.QtWidgets import (
     QMessageBox, QHeaderView, QAbstractItemView
 )
 from PySide6.QtGui import QBrush, QColor
+from PySide6.QtCore import Qt
 from Controllers.payment_controller import PaymentController
 from ui.payment_form_dialog import PaymentFormDialog
+from ui import theme
 
 
 class PaymentsScreen(QWidget):
@@ -17,16 +19,21 @@ class PaymentsScreen(QWidget):
         self.parent_window = parent
         self.controller = PaymentController()
         self.user_data = None
+        self.is_writer = False
         self._build()
 
-    # ------------------------------------------------------------------ API
     def set_user(self, user_data: dict):
         self.user_data = user_data
-        # On entering, run overdue detection (spec: "invoked daily and on-read")
-        try:
-            self.controller.check_overdue()
-        except Exception as e:
-            print(f"[payments] overdue check failed: {e}")
+        role = (user_data or {}).get("role", "")
+        self.is_writer = role in ("Administrator", "Property Manager")
+        self._apply_role_ui()
+
+        if self.is_writer:
+            try:
+                self.controller.check_overdue()
+            except Exception as e:
+                print(f"[payments] overdue check failed: {e}")
+
         self.refresh()
 
     def refresh(self):
@@ -34,138 +41,172 @@ class PaymentsScreen(QWidget):
             "query": self.search_input.text().strip(),
             "status": self.status_filter.currentText(),
         }
-        rows = self.controller.list(filters)
+        rows = self.controller.list(filters, self.user_data)
         self._populate_table(rows)
         self.count_label.setText(f"{len(rows)} payment record(s)")
 
-    # ------------------------------------------------------------------ UI
     def _build(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(30, 26, 30, 26)
+        layout.setSpacing(18)
 
-        # Header
         header = QHBoxLayout()
-        title = QLabel("💰 Payments")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #2c3e50;")
-        header.addWidget(title)
+        header.setSpacing(12)
+
+        self.header_title = QLabel("💰 Payments")
+        self.header_title.setStyleSheet(
+            f"font-size: {theme.FS_2XL}px; font-weight: bold; color: {theme.TEXT_MAIN};"
+        )
+        header.addWidget(self.header_title)
+
+        self.readonly_badge = QLabel("Read-only")
+        self.readonly_badge.setStyleSheet(f"""
+            background: {theme.WARNING_SOFT};
+            color: {theme.WARNING_HOVER};
+            padding: 4px 12px;
+            border-radius: {theme.RADIUS_SM}px;
+            font-size: {theme.FS_XS}px;
+            font-weight: bold;
+        """)
+        self.readonly_badge.setVisible(False)
+        header.addWidget(self.readonly_badge)
+
         header.addStretch()
 
         btn_dashboard = QPushButton("← Dashboard")
-        btn_dashboard.setStyleSheet(
-            "background: transparent; color: #7f8c8d; border: none; "
-            "font-size: 13px; padding: 6px 10px;"
-        )
+        btn_dashboard.setCursor(Qt.PointingHandCursor)
+        btn_dashboard.setFixedHeight(36)
+        btn_dashboard.setStyleSheet(theme.button_qss("ghost"))
         btn_dashboard.clicked.connect(self._go_dashboard)
         header.addWidget(btn_dashboard)
 
         self.btn_add = QPushButton("+ Add Payment")
-        self.btn_add.setFixedHeight(38)
-        self.btn_add.setStyleSheet(
-            "background-color: #3498db; color: white; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        self.btn_add.setCursor(Qt.PointingHandCursor)
+        self.btn_add.setFixedHeight(36)
+        self.btn_add.setStyleSheet(theme.button_qss("primary"))
         self.btn_add.clicked.connect(self._on_add)
         header.addWidget(self.btn_add)
 
         layout.addLayout(header)
 
-        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by property address or tenant…")
         self.search_input.setFixedHeight(38)
-        self.search_input.setStyleSheet(
-            "padding: 0 12px; border: 2px solid #ecf0f1; border-radius: 10px; "
-            "font-size: 13px; background: white;"
-        )
+        self.search_input.setStyleSheet(theme.input_qss())
         self.search_input.returnPressed.connect(self.refresh)
         filters_row.addWidget(self.search_input, stretch=1)
 
         self.status_filter = QComboBox()
         self.status_filter.addItems(["All", "Pending", "Paid", "Overdue"])
         self.status_filter.setFixedHeight(38)
-        self.status_filter.setStyleSheet(
-            "padding: 0 12px; border: 2px solid #ecf0f1; border-radius: 10px; "
-            "font-size: 13px; background: white;"
-        )
+        self.status_filter.setStyleSheet(theme.input_qss())
         self.status_filter.currentTextChanged.connect(self.refresh)
         filters_row.addWidget(self.status_filter)
 
         btn_refresh = QPushButton("Refresh")
+        btn_refresh.setCursor(Qt.PointingHandCursor)
         btn_refresh.setFixedHeight(38)
-        btn_refresh.setStyleSheet(
-            "background: #ecf0f1; color: #2c3e50; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        btn_refresh.setStyleSheet(theme.button_qss("secondary"))
         btn_refresh.clicked.connect(self.refresh)
         filters_row.addWidget(btn_refresh)
 
         layout.addLayout(filters_row)
 
         self.count_label = QLabel("0 payment record(s)")
-        self.count_label.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        self.count_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
+        )
         layout.addWidget(self.count_label)
 
-        # Table
         self.table = QTableWidget()
         self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
-            ["ID", "Property", "Tenant", "Amount", "Due", "Paid", "Status", "Lease ID"]
+            ["ID", "Property", "Tenant", "Amount", "Due", "Paid", "Status", "Lease"]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background: white; border: 1px solid #ecf0f1;
-                border-radius: 12px; font-size: 13px;
-                gridline-color: #ecf0f1;
-            }
-            QHeaderView::section {
-                background: #f8fbfe; color: #2c3e50;
-                padding: 10px; border: none;
-                font-weight: bold; font-size: 12px;
-            }
-            QTableWidget::item { padding: 8px; }
-            QTableWidget::item:selected {
-                background: #eaf3fb; color: #2c3e50;
-            }
+        self.table.setShowGrid(False)
+        self.table.setStyleSheet(f"""
+            QTableWidget {{
+                background: {theme.BG_CARD};
+                border: 1px solid {theme.BORDER};
+                border-radius: {theme.RADIUS_LG}px;
+                font-size: {theme.FS_BASE}px;
+                gridline-color: transparent;
+                alternate-background-color: {theme.BG_SUBTLE};
+                outline: none;
+            }}
+            QHeaderView::section {{
+                background: {theme.BG_SUBTLE};
+                color: {theme.TEXT_MUTED};
+                padding: 12px 10px;
+                border: none;
+                border-bottom: 1px solid {theme.BORDER};
+                font-weight: bold;
+                font-size: {theme.FS_XS}px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            QTableWidget::item {{ padding: 10px; border: none; }}
+            QTableWidget::item:selected {{
+                background: {theme.PRIMARY_SOFT};
+                color: {theme.TEXT_MAIN};
+            }}
         """)
         hv = self.table.horizontalHeader()
         for i in range(8):
             hv.setSectionResizeMode(i, QHeaderView.ResizeToContents)
         hv.setSectionResizeMode(1, QHeaderView.Stretch)
-        hv.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         layout.addWidget(self.table, stretch=1)
 
-        # Actions
         actions = QHBoxLayout()
+        actions.setSpacing(10)
         actions.addStretch()
 
         self.btn_mark_paid = QPushButton("Mark Selected as Paid")
+        self.btn_mark_paid.setCursor(Qt.PointingHandCursor)
         self.btn_mark_paid.setFixedHeight(38)
-        self.btn_mark_paid.setStyleSheet(
-            "background: #27ae60; color: white; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        self.btn_mark_paid.setStyleSheet(theme.button_qss("success"))
         self.btn_mark_paid.clicked.connect(self._on_mark_paid)
         actions.addWidget(self.btn_mark_paid)
 
         layout.addLayout(actions)
 
-    # ------------------------------------------------------------------ helpers
+    def _apply_role_ui(self):
+        role = (self.user_data or {}).get("role", "")
+        if role == "Administrator":
+            self.header_title.setText("💰 All Payments")
+            self.readonly_badge.setVisible(False)
+        elif role == "Property Manager":
+            self.header_title.setText("💰 Payments")
+            self.readonly_badge.setVisible(False)
+        elif role == "Owner":
+            self.header_title.setText("💰 Payments on My Properties")
+            self.readonly_badge.setVisible(True)
+        elif role == "Tenant":
+            self.header_title.setText("💰 My Payments")
+            self.readonly_badge.setVisible(True)
+        else:
+            self.header_title.setText("💰 Payments")
+            self.readonly_badge.setVisible(False)
+
+        self.btn_add.setVisible(self.is_writer)
+        self.btn_mark_paid.setVisible(self.is_writer)
+
     def _populate_table(self, rows):
         self.table.setRowCount(0)
-        overdue_brush = QBrush(QColor("#fdecea"))
-        overdue_fg = QBrush(QColor("#c0392b"))
+        overdue_bg = QBrush(QColor(theme.DANGER_SOFT))
+        overdue_fg = QBrush(QColor(theme.DANGER_HOVER))
 
         for r, p in enumerate(rows):
             self.table.insertRow(r)
+            self.table.setRowHeight(r, 42)
             cells = [
                 str(p["payment_id"]),
                 p["property_address"] or "",
@@ -179,7 +220,7 @@ class PaymentsScreen(QWidget):
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 if p["status"] == "Overdue":
-                    item.setBackground(overdue_brush)
+                    item.setBackground(overdue_bg)
                     item.setForeground(overdue_fg)
                 self.table.setItem(r, c, item)
 
@@ -190,11 +231,12 @@ class PaymentsScreen(QWidget):
         item = self.table.item(row, 0)
         return int(item.text()) if item else None
 
-    # ------------------------------------------------------------------ handlers
     def _go_dashboard(self):
         self.parent_window.stacked_widget.setCurrentIndex(3)
 
     def _on_add(self):
+        if not self.is_writer:
+            return
         dlg = PaymentFormDialog(self)
         if dlg.exec():
             ok, msg = self.controller.create(dlg.get_data(), self.user_data)
@@ -205,6 +247,8 @@ class PaymentsScreen(QWidget):
                 QMessageBox.warning(self, "Error", msg)
 
     def _on_mark_paid(self):
+        if not self.is_writer:
+            return
         pid = self._selected_payment_id()
         if pid is None:
             QMessageBox.information(self, "No selection", "Select a payment first.")

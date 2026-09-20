@@ -1,49 +1,52 @@
-print(">>> lease_form_dialog.py V1 <<<")
+print(">>> lease_form_dialog.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
     QDateEdit, QDialogButtonBox, QLabel, QMessageBox
 )
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 from Repositories.property_repository import PropertyRepository
 from Repositories.user_repository import UserRepository
 from Models.user import UserRole
+from ui import theme
 
 
 class LeaseFormDialog(QDialog):
-    """Modal for creating a new lease."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Create Lease")
-        self.setFixedSize(480, 480)
-        self.setStyleSheet("""
-            QDialog { background: #f0f4f8; }
-            QLabel { color: #2c3e50; font-size: 13px; }
-            QLineEdit, QComboBox, QDateEdit {
-                padding: 8px 10px; border: 2px solid #ecf0f1;
-                border-radius: 8px; font-size: 13px; background: white;
-            }
-            QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
-                border-color: #3498db;
-            }
+        self.setFixedSize(500, 520)
+        self.setStyleSheet(f"""
+            QDialog {{ background: {theme.BG_APP}; }}
+            QLabel {{ color: {theme.TEXT_MAIN}; font-size: {theme.FS_BASE}px; }}
         """)
         self._build()
 
     def _build(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(28, 26, 28, 26)
+        layout.setSpacing(16)
 
         title = QLabel("Create Lease")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        title.setStyleSheet(
+            f"font-size: {theme.FS_XL}px; font-weight: bold; color: {theme.TEXT_MAIN};"
+        )
         layout.addWidget(title)
 
-        form = QFormLayout()
-        form.setSpacing(10)
+        subtitle = QLabel("Link a tenant to a property with a rent and term")
+        subtitle.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
+        )
+        layout.addWidget(subtitle)
 
-        # ---- Property dropdown (non-archived only)
+        layout.addSpacing(4)
+
+        form = QFormLayout()
+        form.setSpacing(12)
+        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
         self.property_combo = QComboBox()
+        self.property_combo.setFixedHeight(40)
         prop_repo = PropertyRepository()
         for p in prop_repo.list_all():
             if p.status == "Archived":
@@ -51,10 +54,11 @@ class LeaseFormDialog(QDialog):
             self.property_combo.addItem(
                 f"#{p.property_id} — {p.address}", p.property_id
             )
-        form.addRow("Property *", self.property_combo)
+        self.property_combo.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Property"), self.property_combo)
 
-        # ---- Tenant dropdown (Tenant role only, active users)
         self.tenant_combo = QComboBox()
+        self.tenant_combo.setFixedHeight(40)
         user_repo = UserRepository()
         for u in user_repo.list_all():
             if u.role != UserRole.TENANT:
@@ -62,46 +66,63 @@ class LeaseFormDialog(QDialog):
             if u.status != "Active":
                 continue
             self.tenant_combo.addItem(f"{u.name} ({u.email})", u.user_id)
-        form.addRow("Tenant *", self.tenant_combo)
+        self.tenant_combo.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Tenant"), self.tenant_combo)
 
-        # ---- Dates
         self.start_date = QDateEdit()
         self.start_date.setCalendarPopup(True)
         self.start_date.setDate(QDate.currentDate())
         self.start_date.setDisplayFormat("yyyy-MM-dd")
-        form.addRow("Start Date *", self.start_date)
+        self.start_date.setFixedHeight(40)
+        self.start_date.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Start Date"), self.start_date)
 
         self.end_date = QDateEdit()
         self.end_date.setCalendarPopup(True)
         self.end_date.setDate(QDate.currentDate().addYears(1))
         self.end_date.setDisplayFormat("yyyy-MM-dd")
-        form.addRow("End Date *", self.end_date)
+        self.end_date.setFixedHeight(40)
+        self.end_date.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("End Date"), self.end_date)
 
-        # ---- Rent
         self.rent = QLineEdit()
         self.rent.setPlaceholderText("e.g. 6500.00")
-        form.addRow("Monthly Rent *", self.rent)
+        self.rent.setFixedHeight(40)
+        self.rent.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Monthly Rent (R)"), self.rent)
 
         layout.addLayout(form)
         layout.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Save).setStyleSheet(
-            "background-color: #3498db; color: white; border: none; "
-            "border-radius: 8px; padding: 8px 18px; font-weight: bold;"
-        )
-        buttons.button(QDialogButtonBox.Cancel).setStyleSheet(
-            "background-color: #ecf0f1; color: #2c3e50; border: none; "
-            "border-radius: 8px; padding: 8px 18px; font-weight: bold;"
-        )
+        save_btn = buttons.button(QDialogButtonBox.Save)
+        save_btn.setText("Create")
+        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.setFixedHeight(40)
+        save_btn.setStyleSheet(theme.button_qss("primary"))
+
+        cancel_btn = buttons.button(QDialogButtonBox.Cancel)
+        cancel_btn.setText("Cancel")
+        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn.setFixedHeight(40)
+        cancel_btn.setStyleSheet(theme.button_qss("secondary"))
+
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    @staticmethod
+    def _label(text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; "
+            f"font-size: {theme.FS_SM}px; font-weight: bold;"
+        )
+        return lbl
+
     def _on_accept(self):
         if self.property_combo.count() == 0:
-            QMessageBox.warning(self, "Missing data",
-                                "No non-archived properties available.")
+            QMessageBox.warning(self, "Missing data", "No non-archived properties available.")
             return
         if self.tenant_combo.count() == 0:
             QMessageBox.warning(self, "Missing data",
@@ -114,8 +135,7 @@ class LeaseFormDialog(QDialog):
             if float(self.rent.text()) <= 0:
                 raise ValueError
         except ValueError:
-            QMessageBox.warning(self, "Invalid rent",
-                                "Rent must be a positive number.")
+            QMessageBox.warning(self, "Invalid rent", "Rent must be a positive number.")
             return
         self.accept()
 

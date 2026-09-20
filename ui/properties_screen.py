@@ -1,4 +1,4 @@
-print(">>> properties_screen.py V1 <<<")
+print(">>> properties_screen.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from Controllers.property_controller import PropertyController
 from ui.property_form_dialog import PropertyFormDialog
+from ui import theme
 
 
 class PropertiesScreen(QWidget):
@@ -35,46 +36,49 @@ class PropertiesScreen(QWidget):
     # ------------------------------------------------------------------ UI
     def _build(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(30, 26, 30, 26)
+        layout.setSpacing(18)
 
-        # Header
+        # ============================================================
+        # HEADER
+        # ============================================================
         header = QHBoxLayout()
+        header.setSpacing(12)
+
         title = QLabel("🏠 Properties")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #2c3e50;")
+        title.setStyleSheet(
+            f"font-size: {theme.FS_2XL}px; font-weight: bold; "
+            f"color: {theme.TEXT_MAIN};"
+        )
         header.addWidget(title)
         header.addStretch()
 
         btn_dashboard = QPushButton("← Dashboard")
-        btn_dashboard.setStyleSheet(
-            "background: transparent; color: #7f8c8d; border: none; "
-            "font-size: 13px; padding: 6px 10px;"
-        )
+        btn_dashboard.setCursor(Qt.PointingHandCursor)
+        btn_dashboard.setFixedHeight(36)
+        btn_dashboard.setStyleSheet(theme.button_qss("ghost"))
         btn_dashboard.clicked.connect(self._go_dashboard)
         header.addWidget(btn_dashboard)
 
         self.btn_add = QPushButton("+ Add Property")
-        self.btn_add.setFixedHeight(38)
-        self.btn_add.setStyleSheet(
-            "background-color: #3498db; color: white; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        self.btn_add.setCursor(Qt.PointingHandCursor)
+        self.btn_add.setFixedHeight(36)
+        self.btn_add.setStyleSheet(theme.button_qss("primary"))
         self.btn_add.clicked.connect(self._on_add)
         header.addWidget(self.btn_add)
 
         layout.addLayout(header)
 
-        # Filters row
+        # ============================================================
+        # FILTERS
+        # ============================================================
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by address or type…")
         self.search_input.setFixedHeight(38)
-        self.search_input.setStyleSheet(
-            "padding: 0 12px; border: 2px solid #ecf0f1; border-radius: 10px; "
-            "font-size: 13px; background: white;"
-        )
+        self.search_input.setStyleSheet(theme.input_qss())
         self.search_input.returnPressed.connect(self.refresh)
         filters_row.addWidget(self.search_input, stretch=1)
 
@@ -83,30 +87,31 @@ class PropertiesScreen(QWidget):
             ["All", "Available", "Occupied", "Under Maintenance", "Archived"]
         )
         self.status_filter.setFixedHeight(38)
-        self.status_filter.setStyleSheet(
-            "padding: 0 12px; border: 2px solid #ecf0f1; border-radius: 10px; "
-            "font-size: 13px; background: white;"
-        )
+        self.status_filter.setStyleSheet(theme.input_qss())
         self.status_filter.currentTextChanged.connect(self.refresh)
         filters_row.addWidget(self.status_filter)
 
         btn_refresh = QPushButton("Refresh")
+        btn_refresh.setCursor(Qt.PointingHandCursor)
         btn_refresh.setFixedHeight(38)
-        btn_refresh.setStyleSheet(
-            "background: #ecf0f1; color: #2c3e50; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        btn_refresh.setStyleSheet(theme.button_qss("secondary"))
         btn_refresh.clicked.connect(self.refresh)
         filters_row.addWidget(btn_refresh)
 
         layout.addLayout(filters_row)
 
-        # Count label
+        # ============================================================
+        # COUNT
+        # ============================================================
         self.count_label = QLabel("0 property record(s)")
-        self.count_label.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        self.count_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
+        )
         layout.addWidget(self.count_label)
 
-        # Table
+        # ============================================================
+        # TABLE
+        # ============================================================
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(
@@ -118,49 +123,63 @@ class PropertiesScreen(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
         self.table.doubleClicked.connect(self._on_row_double_click)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background: white; border: 1px solid #ecf0f1;
-                border-radius: 12px; font-size: 13px;
-                gridline-color: #ecf0f1;
-            }
-            QHeaderView::section {
-                background: #f8fbfe; color: #2c3e50;
-                padding: 10px; border: none;
-                font-weight: bold; font-size: 12px;
-            }
-            QTableWidget::item { padding: 8px; }
-            QTableWidget::item:selected {
-                background: #eaf3fb; color: #2c3e50;
-            }
+        self.table.setShowGrid(False)
+        self.table.setStyleSheet(f"""
+            QTableWidget {{
+                background: {theme.BG_CARD};
+                border: 1px solid {theme.BORDER};
+                border-radius: {theme.RADIUS_LG}px;
+                font-size: {theme.FS_BASE}px;
+                gridline-color: transparent;
+                alternate-background-color: {theme.BG_SUBTLE};
+                outline: none;
+            }}
+            QHeaderView::section {{
+                background: {theme.BG_SUBTLE};
+                color: {theme.TEXT_MUTED};
+                padding: 12px 10px;
+                border: none;
+                border-bottom: 1px solid {theme.BORDER};
+                font-weight: bold;
+                font-size: {theme.FS_XS}px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            QTableWidget::item {{
+                padding: 10px;
+                border: none;
+            }}
+            QTableWidget::item:selected {{
+                background: {theme.PRIMARY_SOFT};
+                color: {theme.TEXT_MAIN};
+            }}
         """)
-        header_view = self.table.horizontalHeader()
-        header_view.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header_view.setSectionResizeMode(1, QHeaderView.Stretch)
-        header_view.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header_view.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header_view.setSectionResizeMode(4, QHeaderView.Stretch)
+        hv = self.table.horizontalHeader()
+        hv.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hv.setSectionResizeMode(1, QHeaderView.Stretch)
+        hv.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        hv.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        hv.setSectionResizeMode(4, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        # Actions row
+        # ============================================================
+        # ACTIONS
+        # ============================================================
         actions = QHBoxLayout()
+        actions.setSpacing(10)
         actions.addStretch()
 
         self.btn_edit = QPushButton("Edit Selected")
+        self.btn_edit.setCursor(Qt.PointingHandCursor)
         self.btn_edit.setFixedHeight(38)
-        self.btn_edit.setStyleSheet(
-            "background: #3498db; color: white; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        self.btn_edit.setStyleSheet(theme.button_qss("primary"))
         self.btn_edit.clicked.connect(self._on_edit_selected)
         actions.addWidget(self.btn_edit)
 
         self.btn_archive = QPushButton("Archive Selected")
+        self.btn_archive.setCursor(Qt.PointingHandCursor)
         self.btn_archive.setFixedHeight(38)
-        self.btn_archive.setStyleSheet(
-            "background: #e74c3c; color: white; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        self.btn_archive.setStyleSheet(theme.button_qss("danger"))
         self.btn_archive.clicked.connect(self._on_archive_selected)
         actions.addWidget(self.btn_archive)
 
@@ -171,6 +190,7 @@ class PropertiesScreen(QWidget):
         self.table.setRowCount(0)
         for r, p in enumerate(rows):
             self.table.insertRow(r)
+            self.table.setRowHeight(r, 42)
             self.table.setItem(r, 0, QTableWidgetItem(str(p["property_id"])))
             self.table.setItem(r, 1, QTableWidgetItem(p["address"] or ""))
             self.table.setItem(r, 2, QTableWidgetItem(p["property_type"] or ""))

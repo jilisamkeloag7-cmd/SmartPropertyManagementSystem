@@ -1,5 +1,6 @@
-print(">>> user_repository.py V2 <<<")
+print(">>> user_repository.py V3 <<<")
 
+from sqlalchemy import func
 from Database.connection import get_session
 from Models.user import User, UserRole
 
@@ -7,9 +8,16 @@ from Models.user import User, UserRole
 class UserRepository:
     # ------------------------------------------------------------------ reads
     def find_by_email(self, email: str):
+        """Case-insensitive email lookup."""
+        if not email:
+            return None
         db = get_session()
         try:
-            return db.query(User).filter(User.email == email).first()
+            return (
+                db.query(User)
+                .filter(func.lower(User.email) == email.strip().lower())
+                .first()
+            )
         finally:
             db.close()
 
@@ -28,12 +36,22 @@ class UserRepository:
             db.close()
 
     def find_by_login(self, identifier: str):
-        """Login accepts email OR ID number."""
+        """
+        Login accepts email OR ID number.
+        Email comparison is CASE-INSENSITIVE.
+        ID number comparison is exact (digits only).
+        """
+        if not identifier:
+            return None
+        identifier = identifier.strip()
         db = get_session()
         try:
             return (
                 db.query(User)
-                .filter((User.email == identifier) | (User.id_number == identifier))
+                .filter(
+                    (func.lower(User.email) == identifier.lower())
+                    | (User.id_number == identifier)
+                )
                 .first()
             )
         finally:
@@ -55,7 +73,7 @@ class UserRepository:
                 like = f"%{query}%"
                 q = q.filter(
                     (User.name.ilike(like))
-                    | (User.email.ilike(like))
+                    | (func.lower(User.email).like(f"%{query.lower()}%"))
                     | (User.id_number.ilike(like))
                 )
             if role_filter and role_filter != "All":
@@ -70,6 +88,8 @@ class UserRepository:
     def create(self, user: User) -> User:
         db = get_session()
         try:
+            # Normalise email to lowercase on store so future lookups are simple
+            user.email = (user.email or "").strip().lower()
             db.add(user)
             db.commit()
             db.refresh(user)
@@ -85,7 +105,7 @@ class UserRepository:
             if not user:
                 return None
             user.name = name
-            user.email = email
+            user.email = (email or "").strip().lower()
             user.phone = phone
             user.role = role
             user.status = status

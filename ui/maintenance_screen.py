@@ -1,4 +1,4 @@
-print(">>> maintenance_screen.py V1 <<<")
+print(">>> maintenance_screen.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -6,16 +6,18 @@ from PySide6.QtWidgets import (
     QMessageBox, QHeaderView, QAbstractItemView
 )
 from PySide6.QtGui import QBrush, QColor
+from PySide6.QtCore import Qt
 from Controllers.maintenance_controller import MaintenanceController
 from ui.maintenance_form_dialog import MaintenanceFormDialog
 from ui.maintenance_detail_dialog import MaintenanceDetailDialog
+from ui import theme
 
 
 PRIORITY_COLORS = {
-    "Low":      QColor("#95a5a6"),
-    "Medium":   QColor("#2980b9"),
-    "High":     QColor("#e67e22"),
-    "Urgent":   QColor("#c0392b"),
+    "Low":    theme.TEXT_FAINT,
+    "Medium": theme.INFO,
+    "High":   theme.WARNING_HOVER,
+    "Urgent": theme.DANGER_HOVER,
 }
 
 
@@ -28,7 +30,6 @@ class MaintenanceScreen(QWidget):
         self.is_manager = False
         self._build()
 
-    # ------------------------------------------------------------------ API
     def set_user(self, user_data: dict):
         self.user_data = user_data
         role = (user_data or {}).get("role", "")
@@ -46,101 +47,89 @@ class MaintenanceScreen(QWidget):
         self._populate_table(rows)
         self.count_label.setText(f"{len(rows)} request(s)")
 
-    # ------------------------------------------------------------------ UI
     def _build(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(30, 26, 30, 26)
+        layout.setSpacing(18)
 
-        # Header
         header = QHBoxLayout()
+        header.setSpacing(12)
 
         self.header_title = QLabel("🔧 Maintenance")
         self.header_title.setStyleSheet(
-            "font-size: 22px; font-weight: bold; color: #2c3e50;"
+            f"font-size: {theme.FS_2XL}px; font-weight: bold; color: {theme.TEXT_MAIN};"
         )
         header.addWidget(self.header_title)
 
         self.readonly_badge = QLabel("Read-only")
-        self.readonly_badge.setStyleSheet(
-            "background: #fef3cd; color: #856404; "
-            "padding: 3px 10px; border-radius: 6px; "
-            "font-size: 11px; font-weight: bold;"
-        )
+        self.readonly_badge.setStyleSheet(f"""
+            background: {theme.WARNING_SOFT};
+            color: {theme.WARNING_HOVER};
+            padding: 4px 12px;
+            border-radius: {theme.RADIUS_SM}px;
+            font-size: {theme.FS_XS}px;
+            font-weight: bold;
+        """)
         self.readonly_badge.setVisible(False)
         header.addWidget(self.readonly_badge)
 
         header.addStretch()
 
         btn_dashboard = QPushButton("← Dashboard")
-        btn_dashboard.setStyleSheet(
-            "background: transparent; color: #7f8c8d; border: none; "
-            "font-size: 13px; padding: 6px 10px;"
-        )
+        btn_dashboard.setCursor(Qt.PointingHandCursor)
+        btn_dashboard.setFixedHeight(36)
+        btn_dashboard.setStyleSheet(theme.button_qss("ghost"))
         btn_dashboard.clicked.connect(self._go_dashboard)
         header.addWidget(btn_dashboard)
 
         self.btn_add = QPushButton("+ Submit Request")
-        self.btn_add.setFixedHeight(38)
-        self.btn_add.setStyleSheet(
-            "background-color: #3498db; color: white; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        self.btn_add.setCursor(Qt.PointingHandCursor)
+        self.btn_add.setFixedHeight(36)
+        self.btn_add.setStyleSheet(theme.button_qss("primary"))
         self.btn_add.clicked.connect(self._on_add)
         header.addWidget(self.btn_add)
 
         layout.addLayout(header)
 
-        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by address, submitter or description…")
         self.search_input.setFixedHeight(38)
-        self.search_input.setStyleSheet(
-            "padding: 0 12px; border: 2px solid #ecf0f1; border-radius: 10px; "
-            "font-size: 13px; background: white;"
-        )
+        self.search_input.setStyleSheet(theme.input_qss())
         self.search_input.returnPressed.connect(self.refresh)
         filters_row.addWidget(self.search_input, stretch=1)
 
         self.status_filter = QComboBox()
         self.status_filter.addItems(["All", "Open", "In Progress", "Resolved", "Closed"])
         self.status_filter.setFixedHeight(38)
-        self.status_filter.setStyleSheet(
-            "padding: 0 12px; border: 2px solid #ecf0f1; border-radius: 10px; "
-            "font-size: 13px; background: white;"
-        )
+        self.status_filter.setStyleSheet(theme.input_qss())
         self.status_filter.currentTextChanged.connect(self.refresh)
         filters_row.addWidget(self.status_filter)
 
         self.priority_filter = QComboBox()
         self.priority_filter.addItems(["All", "Low", "Medium", "High", "Urgent"])
         self.priority_filter.setFixedHeight(38)
-        self.priority_filter.setStyleSheet(
-            "padding: 0 12px; border: 2px solid #ecf0f1; border-radius: 10px; "
-            "font-size: 13px; background: white;"
-        )
+        self.priority_filter.setStyleSheet(theme.input_qss())
         self.priority_filter.currentTextChanged.connect(self.refresh)
         filters_row.addWidget(self.priority_filter)
 
         btn_refresh = QPushButton("Refresh")
+        btn_refresh.setCursor(Qt.PointingHandCursor)
         btn_refresh.setFixedHeight(38)
-        btn_refresh.setStyleSheet(
-            "background: #ecf0f1; color: #2c3e50; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        btn_refresh.setStyleSheet(theme.button_qss("secondary"))
         btn_refresh.clicked.connect(self.refresh)
         filters_row.addWidget(btn_refresh)
 
         layout.addLayout(filters_row)
 
         self.count_label = QLabel("0 request(s)")
-        self.count_label.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        self.count_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
+        )
         layout.addWidget(self.count_label)
 
-        # Table
         self.table = QTableWidget()
         self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
@@ -152,21 +141,33 @@ class MaintenanceScreen(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
         self.table.doubleClicked.connect(self._on_row_double_click)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background: white; border: 1px solid #ecf0f1;
-                border-radius: 12px; font-size: 13px;
-                gridline-color: #ecf0f1;
-            }
-            QHeaderView::section {
-                background: #f8fbfe; color: #2c3e50;
-                padding: 10px; border: none;
-                font-weight: bold; font-size: 12px;
-            }
-            QTableWidget::item { padding: 8px; }
-            QTableWidget::item:selected {
-                background: #eaf3fb; color: #2c3e50;
-            }
+        self.table.setShowGrid(False)
+        self.table.setStyleSheet(f"""
+            QTableWidget {{
+                background: {theme.BG_CARD};
+                border: 1px solid {theme.BORDER};
+                border-radius: {theme.RADIUS_LG}px;
+                font-size: {theme.FS_BASE}px;
+                gridline-color: transparent;
+                alternate-background-color: {theme.BG_SUBTLE};
+                outline: none;
+            }}
+            QHeaderView::section {{
+                background: {theme.BG_SUBTLE};
+                color: {theme.TEXT_MUTED};
+                padding: 12px 10px;
+                border: none;
+                border-bottom: 1px solid {theme.BORDER};
+                font-weight: bold;
+                font-size: {theme.FS_XS}px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            QTableWidget::item {{ padding: 10px; border: none; }}
+            QTableWidget::item:selected {{
+                background: {theme.PRIMARY_SOFT};
+                color: {theme.TEXT_MAIN};
+            }}
         """)
         hv = self.table.horizontalHeader()
         for i in range(8):
@@ -175,22 +176,19 @@ class MaintenanceScreen(QWidget):
         hv.setSectionResizeMode(7, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        # Actions
         actions = QHBoxLayout()
+        actions.setSpacing(10)
         actions.addStretch()
 
         self.btn_open = QPushButton("Open Selected")
+        self.btn_open.setCursor(Qt.PointingHandCursor)
         self.btn_open.setFixedHeight(38)
-        self.btn_open.setStyleSheet(
-            "background: #3498db; color: white; border: none; "
-            "border-radius: 10px; font-size: 13px; font-weight: bold; padding: 0 18px;"
-        )
+        self.btn_open.setStyleSheet(theme.button_qss("primary"))
         self.btn_open.clicked.connect(self._on_open_selected)
         actions.addWidget(self.btn_open)
 
         layout.addLayout(actions)
 
-    # ------------------------------------------------------------------ role UI
     def _apply_role_ui(self):
         role = (self.user_data or {}).get("role", "")
 
@@ -214,25 +212,25 @@ class MaintenanceScreen(QWidget):
             self.header_title.setText("🔧 Maintenance")
             self.readonly_badge.setVisible(False)
 
-    # ------------------------------------------------------------------ helpers
     def _populate_table(self, rows):
         self.table.setRowCount(0)
         for r, m in enumerate(rows):
             self.table.insertRow(r)
+            self.table.setRowHeight(r, 42)
             cells = [
                 str(m["request_id"]),
                 m["property_address"] or "",
                 m["submitter_name"] or "",
                 m["priority"] or "",
                 m["status"] or "",
-                str(m["created_at"]) if m["created_at"] else "",
-                str(m["completed_at"]) if m["completed_at"] else "—",
+                str(m["created_at"])[:16] if m["created_at"] else "",
+                str(m["completed_at"])[:16] if m["completed_at"] else "—",
                 (m["description"] or "")[:80],
             ]
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 if c == 3 and m["priority"] in PRIORITY_COLORS:
-                    item.setForeground(QBrush(PRIORITY_COLORS[m["priority"]]))
+                    item.setForeground(QBrush(QColor(PRIORITY_COLORS[m["priority"]])))
                 self.table.setItem(r, c, item)
 
     def _selected_request_id(self):
@@ -242,7 +240,6 @@ class MaintenanceScreen(QWidget):
         item = self.table.item(row, 0)
         return int(item.text()) if item else None
 
-    # ------------------------------------------------------------------ handlers
     def _go_dashboard(self):
         self.parent_window.stacked_widget.setCurrentIndex(3)
 
