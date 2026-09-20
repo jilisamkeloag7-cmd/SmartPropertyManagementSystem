@@ -1,7 +1,7 @@
-print(">>> sidebar.py V1 <<<")
+print(">>> sidebar.py V2 <<<")
 
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
-                                QPushButton, QWidget)
+                                QPushButton, QWidget, QMessageBox)
 from PySide6.QtCore import Qt
 from ui import theme
 
@@ -9,8 +9,6 @@ from ui import theme
 SIDEBAR_W = 220
 
 
-# Nav items: (icon, label, screen_key)
-# `allowed_roles` — None means everyone logged in
 NAV_ITEMS = [
     ("🏠", "Dashboard",    "dashboard",    None),
     ("🏘",  "Properties",  "properties",   None),
@@ -24,11 +22,6 @@ NAV_ITEMS = [
 
 
 class Sidebar(QFrame):
-    """
-    Persistent left navigation for authenticated screens.
-    Calls `on_navigate(screen_key)` when a nav item is clicked.
-    """
-
     def __init__(self, parent=None, on_navigate=None, on_logout=None):
         super().__init__(parent)
         self.on_navigate = on_navigate
@@ -51,10 +44,7 @@ class Sidebar(QFrame):
     def set_active(self, screen_key: str):
         self._active_key = screen_key
         for key, btn in self._buttons.items():
-            if key == screen_key:
-                btn.setStyleSheet(self._nav_btn_qss(active=True))
-            else:
-                btn.setStyleSheet(self._nav_btn_qss(active=False))
+            btn.setStyleSheet(self._nav_btn_qss(active=(key == screen_key)))
 
     # ------------------------------------------------------------------ UI
     def _build(self):
@@ -70,9 +60,9 @@ class Sidebar(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # ---- Logo / title
+        # ---- Logo
         logo_wrap = QWidget()
-        logo_wrap.setStyleSheet(f"background: transparent;")
+        logo_wrap.setStyleSheet("background: transparent;")
         logo_layout = QHBoxLayout(logo_wrap)
         logo_layout.setContentsMargins(20, 22, 20, 22)
         logo_layout.setSpacing(10)
@@ -91,7 +81,6 @@ class Sidebar(QFrame):
 
         layout.addWidget(logo_wrap)
 
-        # Divider
         div = QFrame()
         div.setFixedHeight(1)
         div.setStyleSheet(f"background: {theme.BORDER};")
@@ -108,7 +97,33 @@ class Sidebar(QFrame):
 
         layout.addStretch()
 
-        # Divider
+        # ---- Theme toggle
+        toggle_wrap = QWidget()
+        toggle_wrap.setStyleSheet("background: transparent;")
+        toggle_layout = QVBoxLayout(toggle_wrap)
+        toggle_layout.setContentsMargins(12, 6, 12, 6)
+
+        self.btn_theme = QPushButton(self._theme_button_label())
+        self.btn_theme.setCursor(Qt.PointingHandCursor)
+        self.btn_theme.setFixedHeight(34)
+        self.btn_theme.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {theme.TEXT_MUTED};
+                border: 1px solid {theme.BORDER};
+                border-radius: {theme.RADIUS_MD}px;
+                font-size: {theme.FS_SM}px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {theme.BG_SUBTLE};
+                color: {theme.TEXT_MAIN};
+            }}
+        """)
+        self.btn_theme.clicked.connect(self._on_toggle_theme)
+        toggle_layout.addWidget(self.btn_theme)
+        layout.addWidget(toggle_wrap)
+
         div2 = QFrame()
         div2.setFixedHeight(1)
         div2.setStyleSheet(f"background: {theme.BORDER};")
@@ -147,8 +162,7 @@ class Sidebar(QFrame):
 
     # ------------------------------------------------------------------ nav
     def _rebuild_nav_items(self):
-        # Clear existing items
-        while self.nav_layout.count() > 1:  # keep trailing stretch
+        while self.nav_layout.count() > 1:
             item = self.nav_layout.takeAt(0)
             w = item.widget()
             if w:
@@ -164,7 +178,6 @@ class Sidebar(QFrame):
             self.nav_layout.insertWidget(self.nav_layout.count() - 1, btn)
             self._buttons[key] = btn
 
-        # Apply active state
         self.set_active(self._active_key)
 
     def _make_nav_button(self, icon, label, key):
@@ -214,3 +227,18 @@ class Sidebar(QFrame):
     def _handle_logout(self):
         if self.on_logout:
             self.on_logout()
+
+    # ------------------------------------------------------------------ theme
+    def _theme_button_label(self):
+        if theme.MODE == "dark":
+            return "☀  Light Mode"
+        return "🌙  Dark Mode"
+
+    def _on_toggle_theme(self):
+        new = theme.toggle_mode()
+        QMessageBox.information(
+            self,
+            "Theme changed",
+            f"Theme set to {new}.\n\nPlease close and reopen the application "
+            f"to apply the new theme."
+        )

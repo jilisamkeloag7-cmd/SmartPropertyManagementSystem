@@ -1,4 +1,4 @@
-print(">>> user_type_screen.py V2 <<<")
+print(">>> user_type_screen.py V3 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                 QLabel, QPushButton, QFrame, QGridLayout,
@@ -20,13 +20,13 @@ class UserTypeScreen(QWidget):
         self._build()
 
     def _build(self):
-        # Gradient background matching Welcome screen
+        # Mode-aware gradient
         self.setAutoFillBackground(True)
         pal = self.palette()
         grad = QLinearGradient(0, 0, 0, 1)
         grad.setCoordinateMode(QLinearGradient.ObjectBoundingMode)
-        grad.setColorAt(0.0, QColor("#eff6ff"))
-        grad.setColorAt(1.0, QColor("#f8fafc"))
+        grad.setColorAt(0.0, QColor(theme.BG_GRADIENT_TOP))
+        grad.setColorAt(1.0, QColor(theme.BG_GRADIENT_BOTTOM))
         pal.setBrush(QPalette.Window, QBrush(grad))
         self.setPalette(pal)
 
@@ -34,7 +34,6 @@ class UserTypeScreen(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Scroll-safe wrapper
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -50,9 +49,6 @@ class UserTypeScreen(QWidget):
         layout.setAlignment(Qt.AlignCenter)
         layout.setSpacing(0)
 
-        # ============================================================
-        # HEADER
-        # ============================================================
         title = QLabel("Who are you?")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
@@ -73,9 +69,6 @@ class UserTypeScreen(QWidget):
 
         layout.addSpacing(theme.SP_10)
 
-        # ============================================================
-        # ROLE CARDS (centered 2x2 grid)
-        # ============================================================
         cards_container = QWidget()
         cards_container.setStyleSheet("background: transparent;")
         cards_outer = QHBoxLayout(cards_container)
@@ -88,7 +81,7 @@ class UserTypeScreen(QWidget):
 
         roles = [
             ("👑", "Administrator",     theme.PRIMARY),
-            ("📋", "Property Manager",  "#8b5cf6"),     # violet
+            ("📋", "Property Manager",  "#8b5cf6"),
             ("🏠", "Owner",             theme.SUCCESS),
             ("👤", "Tenant / User",     theme.INFO),
         ]
@@ -105,9 +98,6 @@ class UserTypeScreen(QWidget):
 
         layout.addSpacing(theme.SP_10)
 
-        # ============================================================
-        # BACK BUTTON
-        # ============================================================
         back_row = QHBoxLayout()
         back_row.addStretch()
 
@@ -136,8 +126,6 @@ class UserTypeScreen(QWidget):
         card = QPushButton()
         card.setFixedSize(ROLE_CARD_W, ROLE_CARD_H)
         card.setCursor(Qt.PointingHandCursor)
-
-        # Build with a two-line label: icon on top, role below
         card.setText(f"{icon}\n{role}")
         card.setStyleSheet(f"""
             QPushButton {{
@@ -155,13 +143,7 @@ class UserTypeScreen(QWidget):
                 border-color: {accent_color};
                 color: {accent_color};
             }}
-            QPushButton:pressed {{
-                background-color: {theme.PRIMARY_SOFT};
-            }}
         """)
-        # Bigger emoji via a separate style trick — Qt doesn't support mixed sizes
-        # in one label, so we accept the compromise. The emoji still renders larger
-        # than typical text because it's a wide glyph.
         card.clicked.connect(lambda checked, r=role: self._on_role_selected(r))
         return card
 

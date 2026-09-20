@@ -1,7 +1,7 @@
-print(">>> welcome_screen.py V2 <<<")
+print(">>> welcome_screen.py V3 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
-                                QLabel, QPushButton, QFrame)
+                                QLabel, QPushButton)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QLinearGradient, QBrush, QColor, QPalette
 from ui import theme
@@ -14,13 +14,13 @@ class WelcomeScreen(QWidget):
         self._build()
 
     def _build(self):
-        # Gradient background on the whole widget
+        # Mode-aware gradient
         self.setAutoFillBackground(True)
         pal = self.palette()
         grad = QLinearGradient(0, 0, 0, 1)
         grad.setCoordinateMode(QLinearGradient.ObjectBoundingMode)
-        grad.setColorAt(0.0, QColor("#eff6ff"))
-        grad.setColorAt(1.0, QColor("#f8fafc"))
+        grad.setColorAt(0.0, QColor(theme.BG_GRADIENT_TOP))
+        grad.setColorAt(1.0, QColor(theme.BG_GRADIENT_BOTTOM))
         pal.setBrush(QPalette.Window, QBrush(grad))
         self.setPalette(pal)
 
@@ -29,7 +29,6 @@ class WelcomeScreen(QWidget):
         layout.setSpacing(0)
         layout.setContentsMargins(40, 40, 40, 40)
 
-        # ---- Logo mark
         logo = QLabel("🏢")
         logo.setAlignment(Qt.AlignCenter)
         logo.setStyleSheet("font-size: 72px;")
@@ -37,7 +36,6 @@ class WelcomeScreen(QWidget):
 
         layout.addSpacing(theme.SP_4)
 
-        # ---- Title
         title = QLabel("Smart Property Management")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
@@ -49,7 +47,6 @@ class WelcomeScreen(QWidget):
 
         layout.addSpacing(theme.SP_2)
 
-        # ---- Subtitle
         subtitle = QLabel("Streamline your property operations with ease")
         subtitle.setAlignment(Qt.AlignCenter)
         subtitle.setStyleSheet(
@@ -60,7 +57,6 @@ class WelcomeScreen(QWidget):
 
         layout.addSpacing(theme.SP_10)
 
-        # ---- CTA card (thin container for the button)
         btn = QPushButton("Get Started")
         btn.setCursor(Qt.PointingHandCursor)
         btn.setFixedSize(240, 56)
@@ -79,7 +75,6 @@ class WelcomeScreen(QWidget):
         """)
         btn.clicked.connect(self._on_start)
 
-        # Centre the button
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_row.addWidget(btn)
@@ -88,7 +83,6 @@ class WelcomeScreen(QWidget):
 
         layout.addSpacing(theme.SP_10)
 
-        # ---- Footer hint
         hint = QLabel("Version 0.1  •  ENEL2SEH1 Group Project")
         hint.setAlignment(Qt.AlignCenter)
         hint.setStyleSheet(

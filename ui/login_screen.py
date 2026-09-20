@@ -1,4 +1,4 @@
-print(">>> login_screen.py V4 <<<")
+print(">>> login_screen.py V5 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                 QLineEdit, QPushButton, QFrame, QScrollArea)
@@ -19,13 +19,10 @@ class LoginScreen(QWidget):
         self.auth = AuthController()
         self._build()
 
-    # ------------------------------------------------------------------ API
     def set_role(self, role):
         self.clear_fields()
         self.current_role = role
         self.role_label.setText(f"Sign in as {role}")
-        # Show a nice accent colour per role in the header
-        self._apply_role_accent(role)
 
     def clear_fields(self):
         self.email_input.clear()
@@ -34,15 +31,13 @@ class LoginScreen(QWidget):
         self.password_input.setEchoMode(QLineEdit.Password)
         self._toggle_btn.setText("Show")
 
-    # ------------------------------------------------------------- UI
     def _build(self):
-        # Gradient background matching Welcome / User Type
         self.setAutoFillBackground(True)
         pal = self.palette()
         grad = QLinearGradient(0, 0, 0, 1)
         grad.setCoordinateMode(QLinearGradient.ObjectBoundingMode)
-        grad.setColorAt(0.0, QColor("#eff6ff"))
-        grad.setColorAt(1.0, QColor("#f8fafc"))
+        grad.setColorAt(0.0, QColor(theme.BG_GRADIENT_TOP))
+        grad.setColorAt(1.0, QColor(theme.BG_GRADIENT_BOTTOM))
         pal.setBrush(QPalette.Window, QBrush(grad))
         self.setPalette(pal)
 
@@ -65,9 +60,6 @@ class LoginScreen(QWidget):
         layout.setAlignment(Qt.AlignCenter)
         layout.setSpacing(0)
 
-        # ============================================================
-        # ROLE INDICATOR
-        # ============================================================
         self.role_label = QLabel("Sign in as User")
         self.role_label.setAlignment(Qt.AlignCenter)
         self.role_label.setStyleSheet(
@@ -79,9 +71,6 @@ class LoginScreen(QWidget):
 
         layout.addSpacing(theme.SP_6)
 
-        # ============================================================
-        # LOGIN CARD
-        # ============================================================
         card = QFrame()
         card.setFixedWidth(CARD_W)
         card.setStyleSheet(f"""
@@ -95,7 +84,6 @@ class LoginScreen(QWidget):
         card_layout.setContentsMargins(36, 36, 36, 36)
         card_layout.setSpacing(16)
 
-        # ---- Email / ID
         card_layout.addWidget(self._field_label("Email or ID Number"))
 
         self.email_input = QLineEdit()
@@ -107,7 +95,6 @@ class LoginScreen(QWidget):
 
         card_layout.addSpacing(4)
 
-        # ---- Password label + Show/Hide toggle
         pwd_label_row = QHBoxLayout()
         pwd_label_row.addWidget(self._field_label("Password"))
         pwd_label_row.addStretch()
@@ -142,7 +129,6 @@ class LoginScreen(QWidget):
         self.password_input.returnPressed.connect(self.handle_login)
         card_layout.addWidget(self.password_input)
 
-        # ---- Error label (reserved height so layout doesn't jump)
         self.error_label = QLabel("")
         self.error_label.setStyleSheet(
             f"color: {theme.DANGER}; font-size: {theme.FS_SM}px;"
@@ -153,7 +139,6 @@ class LoginScreen(QWidget):
 
         card_layout.addSpacing(6)
 
-        # ---- Sign In button
         self.btn_signin = QPushButton("Sign In")
         self.btn_signin.setCursor(Qt.PointingHandCursor)
         self.btn_signin.setFixedHeight(50)
@@ -174,7 +159,6 @@ class LoginScreen(QWidget):
         self.btn_signin.clicked.connect(self.handle_login)
         card_layout.addWidget(self.btn_signin)
 
-        # ---- Forgot password
         btn_forgot = QPushButton("Forgot password?")
         btn_forgot.setCursor(Qt.PointingHandCursor)
         btn_forgot.setStyleSheet(f"""
@@ -195,9 +179,6 @@ class LoginScreen(QWidget):
 
         layout.addSpacing(theme.SP_6)
 
-        # ============================================================
-        # BACK BUTTON
-        # ============================================================
         back_row = QHBoxLayout()
         back_row.addStretch()
 
@@ -222,7 +203,6 @@ class LoginScreen(QWidget):
 
         layout.addLayout(back_row)
 
-    # ------------------------------------------------------------- helpers
     @staticmethod
     def _field_label(text):
         lbl = QLabel(text)
@@ -242,16 +222,12 @@ class LoginScreen(QWidget):
                 border-radius: {theme.RADIUS_MD}px;
                 font-size: {theme.FS_MD}px;
                 color: {theme.TEXT_MAIN};
-                background: {theme.BG_CARD};
+                background: {theme.BG_SUBTLE};
             }}
             QLineEdit:focus {{
                 border-color: {theme.PRIMARY};
             }}
         """
-
-    def _apply_role_accent(self, role):
-        # Optional: could colour the role label per role. Keeping it simple for now.
-        pass
 
     def _toggle_password(self):
         if self.password_input.echoMode() == QLineEdit.Password:
@@ -264,7 +240,7 @@ class LoginScreen(QWidget):
     def _go_back(self):
         self.clear_fields()
         self.parent_window._set_screen("user_type")
-    # ------------------------------------------------------------- auth
+
     def handle_login(self):
         identifier = self.email_input.text().strip()
         password   = self.password_input.text()
@@ -275,7 +251,6 @@ class LoginScreen(QWidget):
             self.error_label.setText(err or "Login failed.")
             return
 
-        # success — clear password from memory
         self.password_input.clear()
         self.password_input.setEchoMode(QLineEdit.Password)
         self._toggle_btn.setText("Show")
