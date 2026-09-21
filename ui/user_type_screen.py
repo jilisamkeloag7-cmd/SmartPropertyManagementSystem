@@ -1,4 +1,4 @@
-print(">>> user_type_screen.py V3 <<<")
+print(">>> user_type_screen.py V4 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                 QLabel, QPushButton, QFrame, QGridLayout,
@@ -9,8 +9,62 @@ from ui import theme
 
 
 ROLE_CARD_W = 220
-ROLE_CARD_H = 140
+ROLE_CARD_H = 160
 ROLE_GAP = 20
+
+
+class RoleCard(QFrame):
+    """Card with large icon + role label. Whole card is clickable."""
+
+    def __init__(self, icon, role_name, accent_color, on_click=None, parent=None):
+        super().__init__(parent)
+        self.icon = icon
+        self.role_name = role_name
+        self.accent = accent_color
+        self.on_click = on_click
+        self._build()
+
+    def _build(self):
+        self.setFixedSize(ROLE_CARD_W, ROLE_CARD_H)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet(f"""
+            RoleCard {{
+                background-color: {theme.BG_CARD};
+                border: 2px solid {theme.BORDER};
+                border-radius: {theme.RADIUS_LG}px;
+            }}
+            RoleCard:hover {{
+                background-color: {theme.PRIMARY_SOFT};
+                border-color: {self.accent};
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 20, 16, 20)
+        layout.setSpacing(8)
+
+        icon_lbl = QLabel(self.icon)
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setStyleSheet(
+            "font-size: 44px; border: none; background: transparent;"
+        )
+        layout.addWidget(icon_lbl)
+
+        role_lbl = QLabel(self.role_name)
+        role_lbl.setAlignment(Qt.AlignCenter)
+        role_lbl.setStyleSheet(
+            f"font-size: {theme.FS_MD}px; font-weight: bold; "
+            f"color: {theme.TEXT_MAIN}; border: none; background: transparent;"
+        )
+        layout.addWidget(role_lbl)
+
+        layout.addStretch()
+
+    def mousePressEvent(self, event):
+        if self.on_click:
+            self.on_click(self.role_name)
+        super().mousePressEvent(event)
 
 
 class UserTypeScreen(QWidget):
@@ -52,8 +106,7 @@ class UserTypeScreen(QWidget):
         title = QLabel("Who are you?")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
-            f"font-size: {theme.FS_3XL}px; "
-            f"font-weight: bold; "
+            f"font-size: {theme.FS_3XL}px; font-weight: bold; "
             f"color: {theme.TEXT_MAIN};"
         )
         layout.addWidget(title)
@@ -87,7 +140,7 @@ class UserTypeScreen(QWidget):
         ]
 
         for i, (icon, role, accent) in enumerate(roles):
-            card = self._build_role_card(icon, role, accent)
+            card = RoleCard(icon, role, accent, on_click=self._on_role_selected)
             row = i // 2
             col = i % 2
             grid.addWidget(card, row, col)
@@ -121,31 +174,6 @@ class UserTypeScreen(QWidget):
         back_row.addStretch()
 
         layout.addLayout(back_row)
-
-    def _build_role_card(self, icon, role, accent_color):
-        card = QPushButton()
-        card.setFixedSize(ROLE_CARD_W, ROLE_CARD_H)
-        card.setCursor(Qt.PointingHandCursor)
-        card.setText(f"{icon}\n{role}")
-        card.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {theme.BG_CARD};
-                border: 2px solid {theme.BORDER};
-                border-radius: {theme.RADIUS_LG}px;
-                font-size: {theme.FS_MD}px;
-                font-weight: 500;
-                color: {theme.TEXT_MAIN};
-                padding: 20px 10px;
-                text-align: center;
-            }}
-            QPushButton:hover {{
-                background-color: {theme.PRIMARY_SOFT};
-                border-color: {accent_color};
-                color: {accent_color};
-            }}
-        """)
-        card.clicked.connect(lambda checked, r=role: self._on_role_selected(r))
-        return card
 
     def _on_role_selected(self, role):
         self.parent_window.show_login(role)
