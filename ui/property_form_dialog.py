@@ -1,7 +1,7 @@
-print(">>> property_form_dialog.py V2 <<<")
+print(">>> property_form_dialog.py V3 <<<")
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox,
+    QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
     QTextEdit, QDialogButtonBox, QLabel, QMessageBox
 )
 from PySide6.QtCore import Qt
@@ -13,14 +13,12 @@ STATUSES = ["Available", "Occupied", "Under Maintenance", "Archived"]
 
 
 class PropertyFormDialog(QDialog):
-    """Modal for adding or editing a property."""
-
     def __init__(self, parent=None, property_data: dict | None = None):
         super().__init__(parent)
         self.property_data = property_data or {}
         self.is_edit = bool(property_data and property_data.get("property_id"))
         self.setWindowTitle("Edit Property" if self.is_edit else "Add Property")
-        self.setFixedSize(480, 480)
+        self.setFixedSize(500, 560)
         self.setStyleSheet(f"""
             QDialog {{ background: {theme.BG_APP}; }}
             QLabel {{ color: {theme.TEXT_MAIN}; font-size: {theme.FS_BASE}px; }}
@@ -32,7 +30,6 @@ class PropertyFormDialog(QDialog):
         layout.setContentsMargins(28, 26, 28, 26)
         layout.setSpacing(16)
 
-        # ---- Title
         title = QLabel("Edit Property" if self.is_edit else "Add Property")
         title.setStyleSheet(
             f"font-size: {theme.FS_XL}px; font-weight: bold; "
@@ -40,7 +37,6 @@ class PropertyFormDialog(QDialog):
         )
         layout.addWidget(title)
 
-        # ---- Subtitle
         subtitle = QLabel(
             "Update the fields below" if self.is_edit
             else "Fill in the property details"
@@ -52,7 +48,6 @@ class PropertyFormDialog(QDialog):
 
         layout.addSpacing(4)
 
-        # ---- Form
         form = QFormLayout()
         form.setSpacing(12)
         form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -80,11 +75,20 @@ class PropertyFormDialog(QDialog):
         self.status.setStyleSheet(theme.input_qss())
         form.addRow(self._label("Status"), self.status)
 
+        # ---- Listing price
+        self.listing_price = QLineEdit()
+        self.listing_price.setPlaceholderText("e.g. 6500.00 (monthly rent in R)")
+        self.listing_price.setFixedHeight(40)
+        self.listing_price.setStyleSheet(theme.input_qss())
+        if self.property_data.get("listing_price") is not None:
+            self.listing_price.setText(f"{self.property_data['listing_price']:.2f}")
+        form.addRow(self._label("Listing Price (R)"), self.listing_price)
+
         self.build_details = QTextEdit()
         self.build_details.setPlaceholderText(
             "e.g. 3 bed, 2 bath, built 2010, 250m² yard"
         )
-        self.build_details.setFixedHeight(100)
+        self.build_details.setFixedHeight(90)
         self.build_details.setText(self.property_data.get("build_details", "") or "")
         self.build_details.setStyleSheet(theme.input_qss())
         form.addRow(self._label("Build Details"), self.build_details)
@@ -92,7 +96,6 @@ class PropertyFormDialog(QDialog):
         layout.addLayout(form)
         layout.addStretch()
 
-        # ---- Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         save_btn = buttons.button(QDialogButtonBox.Save)
         save_btn.setText("Save")
@@ -115,8 +118,7 @@ class PropertyFormDialog(QDialog):
         lbl = QLabel(text)
         lbl.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; "
-            f"font-size: {theme.FS_SM}px; "
-            f"font-weight: bold;"
+            f"font-size: {theme.FS_SM}px; font-weight: bold;"
         )
         return lbl
 
@@ -124,12 +126,30 @@ class PropertyFormDialog(QDialog):
         if not self.address.text().strip():
             QMessageBox.warning(self, "Missing field", "Address is required.")
             return
+
+        price_text = self.listing_price.text().strip()
+        if price_text:
+            try:
+                val = float(price_text)
+                if val < 0:
+                    raise ValueError
+            except ValueError:
+                QMessageBox.warning(self, "Invalid price",
+                                    "Listing price must be a positive number.")
+                return
+
         self.accept()
 
     def get_data(self) -> dict:
+        price_text = self.listing_price.text().strip()
+        try:
+            price = float(price_text) if price_text else None
+        except ValueError:
+            price = None
         return {
             "address": self.address.text().strip(),
             "property_type": self.ptype.currentText(),
             "status": self.status.currentText(),
+            "listing_price": price,
             "build_details": self.build_details.toPlainText().strip(),
         }

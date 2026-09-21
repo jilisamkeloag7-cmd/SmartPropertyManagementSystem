@@ -1,27 +1,17 @@
-print(">>> property_card.py V1 <<<")
+print(">>> property_card.py V2 <<<")
 
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
-                                QPushButton, QSizePolicy)
+                                QPushButton)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 from ui import theme
 
 
 CARD_W = 260
-CARD_H = 230
-IMAGE_H = 120
+CARD_H = 260
+IMAGE_H = 130
 
 
 class PropertyCard(QFrame):
-    """
-    Card widget displaying a property.
-    - Image area (placeholder for now; image support in Phase 5)
-    - Address
-    - Type • Status line
-    - Optional footer detail (build details snippet)
-    - Optional click handler + optional action button
-    """
-
     def __init__(self, property_data: dict, parent=None,
                  on_click=None, action_label=None, on_action=None):
         super().__init__(parent)
@@ -49,7 +39,7 @@ class PropertyCard(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # ---- Image area (placeholder)
+        # ---- Image area (placeholder until Phase B1)
         image_area = QLabel("🏠")
         image_area.setAlignment(Qt.AlignCenter)
         image_area.setFixedHeight(IMAGE_H)
@@ -65,18 +55,49 @@ class PropertyCard(QFrame):
         # ---- Info area
         info = QVBoxLayout()
         info.setContentsMargins(14, 12, 14, 12)
-        info.setSpacing(4)
+        info.setSpacing(6)
 
+        # Address
         addr = QLabel(self.property_data.get("address", "(no address)"))
         addr.setWordWrap(True)
-        addr.setMaximumHeight(40)
+        addr.setMaximumHeight(36)
         addr.setStyleSheet(
             f"font-size: {theme.FS_MD}px; font-weight: bold; "
             f"color: {theme.TEXT_MAIN}; border: none; background: transparent;"
         )
         info.addWidget(addr)
 
-        # Type • Status
+        # ---- Price (prominent)
+        price = self.property_data.get("listing_price")
+        if price is not None and price > 0:
+            price_row = QHBoxLayout()
+            price_row.setSpacing(4)
+
+            amount = QLabel(f"R{price:,.0f}")
+            amount.setStyleSheet(
+                f"font-size: {theme.FS_XL}px; font-weight: bold; "
+                f"color: {theme.PRIMARY}; border: none; background: transparent;"
+            )
+            price_row.addWidget(amount)
+
+            per_month = QLabel("/ month")
+            per_month.setStyleSheet(
+                f"font-size: {theme.FS_XS}px; color: {theme.TEXT_MUTED}; "
+                f"border: none; background: transparent;"
+            )
+            per_month.setAlignment(Qt.AlignBottom)
+            price_row.addWidget(per_month)
+            price_row.addStretch()
+            info.addLayout(price_row)
+        else:
+            no_price = QLabel("Price on request")
+            no_price.setStyleSheet(
+                f"font-size: {theme.FS_BASE}px; font-style: italic; "
+                f"color: {theme.TEXT_FAINT}; border: none; background: transparent;"
+            )
+            info.addWidget(no_price)
+
+        # ---- Type + Status badges
         meta = QHBoxLayout()
         meta.setSpacing(6)
 
@@ -112,20 +133,9 @@ class PropertyCard(QFrame):
         meta.addStretch()
         info.addLayout(meta)
 
-        # Build details snippet
-        details = self.property_data.get("build_details") or ""
-        if details:
-            snippet = QLabel(details[:60] + ("…" if len(details) > 60 else ""))
-            snippet.setStyleSheet(
-                f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_XS}px; "
-                f"border: none; background: transparent;"
-            )
-            snippet.setWordWrap(True)
-            info.addWidget(snippet)
-
         info.addStretch()
 
-        # Optional action button
+        # ---- Optional action button
         if self.action_label and self.on_action:
             btn = QPushButton(self.action_label)
             btn.setCursor(Qt.PointingHandCursor)

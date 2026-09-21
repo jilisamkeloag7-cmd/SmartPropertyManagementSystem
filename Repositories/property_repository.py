@@ -1,5 +1,6 @@
-print(">>> property_repository.py V1 <<<")
+print(">>> property_repository.py V2 <<<")
 
+from sqlalchemy import func
 from Database.connection import get_session
 from Models.property import Property
 
@@ -31,11 +32,13 @@ class PropertyRepository:
     def find_by_id(self, property_id: int):
         db = get_session()
         try:
-            return db.query(Property).filter(Property.property_id == property_id).first()
+            return db.query(Property).filter(
+                Property.property_id == property_id
+            ).first()
         finally:
             db.close()
 
-    def create(self, address, property_type, build_details, status):
+    def create(self, address, property_type, build_details, status, listing_price=None):
         db = get_session()
         try:
             prop = Property(
@@ -43,6 +46,7 @@ class PropertyRepository:
                 property_type=property_type,
                 build_details=build_details,
                 status=status,
+                listing_price=listing_price,
             )
             db.add(prop)
             db.commit()
@@ -51,7 +55,8 @@ class PropertyRepository:
         finally:
             db.close()
 
-    def update(self, property_id, address, property_type, build_details, status):
+    def update(self, property_id, address, property_type, build_details, status,
+               listing_price=None):
         db = get_session()
         try:
             prop = db.query(Property).filter(Property.property_id == property_id).first()
@@ -61,6 +66,7 @@ class PropertyRepository:
             prop.property_type = property_type
             prop.build_details = build_details
             prop.status = status
+            prop.listing_price = listing_price
             db.commit()
             db.refresh(prop)
             return prop
@@ -80,7 +86,6 @@ class PropertyRepository:
             db.close()
 
     def has_active_lease(self, property_id: int) -> bool:
-        """Check the leases table directly (LeaseRepository not built yet)."""
         from Models.lease import Lease
         db = get_session()
         try:

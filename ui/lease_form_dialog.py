@@ -1,4 +1,4 @@
-print(">>> lease_form_dialog.py V2 <<<")
+print(">>> lease_form_dialog.py V3 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
@@ -15,12 +15,15 @@ class LeaseFormDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Create Lease")
-        self.setFixedSize(500, 520)
+        self.setFixedSize(520, 580)
         self.setStyleSheet(f"""
             QDialog {{ background: {theme.BG_APP}; }}
             QLabel {{ color: {theme.TEXT_MAIN}; font-size: {theme.FS_BASE}px; }}
         """)
+        self._property_lookup = {}   # property_id → property object (for price lookup)
         self._build()
+        # Trigger the initial auto-fill for the first selection
+        self._on_property_changed()
 
     def _build(self):
         layout = QVBoxLayout(self)
@@ -45,16 +48,23 @@ class LeaseFormDialog(QDialog):
         form.setSpacing(12)
         form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
+        # ---- Property combo (with embedded listing price display)
         self.property_combo = QComboBox()
         self.property_combo.setFixedHeight(40)
         prop_repo = PropertyRepository()
         for p in prop_repo.list_all():
             if p.status == "Archived":
                 continue
+            price_suffix = ""
+            if p.listing_price is not None:
+                price_suffix = f"  •  R{p.listing_price:,.0f}/mo"
             self.property_combo.addItem(
-                f"#{p.property_id} — {p.address}", p.property_id
+                f"#{p.property_id} — {p.address}{price_suffix}",
+                p.property_id,
             )
+            self._property_lookup[p.property_id] = p
         self.property_combo.setStyleSheet(theme.input_qss())
+        self.property_combo.currentIndexChanged.connect(self._on_property_changed)
         form.addRow(self._label("Property"), self.property_combo)
 
         self.tenant_combo = QComboBox()
@@ -85,11 +95,20 @@ class LeaseFormDialog(QDialog):
         self.end_date.setStyleSheet(theme.input_qss())
         form.addRow(self._label("End Date"), self.end_date)
 
+        # ---- Rent field with auto-fill hint
         self.rent = QLineEdit()
         self.rent.setPlaceholderText("e.g. 6500.00")
         self.rent.setFixedHeight(40)
         self.rent.setStyleSheet(theme.input_qss())
         form.addRow(self._label("Monthly Rent (R)"), self.rent)
+
+        # Hint label under rent
+        self.hint_label = QLabel("")
+        self.hint_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_XS}px; "
+            f"font-style: italic;"
+        )
+        form.addRow("", self.hint_label)
 
         layout.addLayout(form)
         layout.addStretch()
@@ -120,9 +139,31 @@ class LeaseFormDialog(QDialog):
         )
         return lbl
 
+    # ------------------------------------------------------------------ auto-fill
+    def _on_property_changed(self):
+        pid = self.property_combo.currentData()
+        if pid is None:
+            return
+        prop = self._property_lookup.get(pid)
+        if prop and prop.listing_price is not None and prop.listing_price > 0:
+            # Auto-fill rent with the property's asking price
+            self.rent.setText(f"{prop.listing_price:.2f}")
+            self.hint_label.setText(
+                f"Auto-filled from property's asking price. You may adjust."
+            )
+        else:
+            # No listing price → clear and hint
+            if not self.rent.text().strip() or self.rent.text().strip() == "":
+                self.rent.clear()
+            self.hint_label.setText(
+                "This property has no listing price set — enter a rent manually."
+            )
+
+    # ------------------------------------------------------------------ validate
     def _on_accept(self):
         if self.property_combo.count() == 0:
-            QMessageBox.warning(self, "Missing data", "No non-archived properties available.")
+            QMessageBox.warning(self, "Missing data",
+                                "No non-archived properties available.")
             return
         if self.tenant_combo.count() == 0:
             QMessageBox.warning(self, "Missing data",
@@ -135,7 +176,8 @@ class LeaseFormDialog(QDialog):
             if float(self.rent.text()) <= 0:
                 raise ValueError
         except ValueError:
-            QMessageBox.warning(self, "Invalid rent", "Rent must be a positive number.")
+            QMessageBox.warning(self, "Invalid rent",
+                                "Rent must be a positive number.")
             return
         self.accept()
 

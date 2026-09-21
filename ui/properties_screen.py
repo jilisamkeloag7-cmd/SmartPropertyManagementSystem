@@ -1,4 +1,4 @@
-print(">>> properties_screen.py V3 <<<")
+print(">>> properties_screen.py V4 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -59,7 +59,7 @@ class PropertiesScreen(QWidget):
         layout.setSpacing(18)
 
         # ============================================================
-        # HEADER (title changes per role)
+        # HEADER
         # ============================================================
         header = QHBoxLayout()
         header.setSpacing(12)
@@ -102,7 +102,7 @@ class PropertiesScreen(QWidget):
         layout.addLayout(header)
 
         # ============================================================
-        # FILTERS (shared across roles)
+        # FILTERS
         # ============================================================
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
@@ -133,7 +133,7 @@ class PropertiesScreen(QWidget):
         layout.addLayout(filters_row)
 
         # ============================================================
-        # COUNT LABEL
+        # COUNT
         # ============================================================
         self.count_label = QLabel("0 property record(s)")
         self.count_label.setStyleSheet(
@@ -142,12 +142,12 @@ class PropertiesScreen(QWidget):
         layout.addWidget(self.count_label)
 
         # ============================================================
-        # ADMIN TABLE (hidden unless Admin/Manager)
+        # ADMIN TABLE (6 columns now — price added)
         # ============================================================
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
+        self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(
-            ["ID", "Address", "Type", "Status", "Build Details"]
+            ["ID", "Address", "Type", "Status", "Price", "Build Details"]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -188,11 +188,12 @@ class PropertiesScreen(QWidget):
         hv.setSectionResizeMode(1, QHeaderView.Stretch)
         hv.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         hv.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        hv.setSectionResizeMode(4, QHeaderView.Stretch)
+        hv.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        hv.setSectionResizeMode(5, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
         # ============================================================
-        # CARD GRID (shown for Owner/Tenant)
+        # CARD GRID (Owner / Tenant)
         # ============================================================
         self.cards_container = QWidget()
         self.cards_container.setStyleSheet("background: transparent;")
@@ -203,7 +204,7 @@ class PropertiesScreen(QWidget):
         layout.addWidget(self.cards_container, stretch=1)
 
         # ============================================================
-        # ACTIONS ROW (admin/manager only)
+        # ACTIONS ROW
         # ============================================================
         self.actions_row = QHBoxLayout()
         self.actions_row.setSpacing(10)
@@ -227,12 +228,10 @@ class PropertiesScreen(QWidget):
 
     # ------------------------------------------------------------------ refresh
     def _refresh_all(self):
-        # ---- Role-based UI
         is_admin_like = self.role in ("Administrator", "Property Manager")
         is_owner = self.role == "Owner"
         is_tenant = self.role == "Tenant"
 
-        # Title
         if is_admin_like:
             self.title_label.setText("🏠 All Properties")
             self.readonly_badge.setVisible(False)
@@ -246,39 +245,30 @@ class PropertiesScreen(QWidget):
             self.title_label.setText("🏠 Properties")
             self.readonly_badge.setVisible(False)
 
-        # Add button only for writers
         self.btn_add.setVisible(is_admin_like)
-
-        # Table only for admin/manager; cards for owner/tenant
         self.table.setVisible(is_admin_like)
         self.cards_container.setVisible(is_owner or is_tenant)
         self.btn_edit.setVisible(is_admin_like)
         self.btn_archive.setVisible(is_admin_like)
 
-        # ---- Data fetch
         filters = {
             "query": self.search_input.text().strip(),
             "status": self.status_filter.currentText(),
         }
         rows = self.controller.list(filters)
 
-        # ---- Role scoping
         if is_owner:
             uid = self.user_data.get("user_id")
-            owned_pids = set(
-                OwnershipRepository().property_ids_for_owner(uid)
-            )
+            owned_pids = set(OwnershipRepository().property_ids_for_owner(uid))
             rows = [r for r in rows if r["property_id"] in owned_pids]
         elif is_tenant:
             uid = self.user_data.get("user_id")
             leases = LeaseRepository().list_for_tenant(uid)
             leased_pids = {l.property_id for l in leases if l.status == "Active"}
-            # Tenant sees: properties they lease (any status) + available ones
             rows = [
                 r for r in rows
                 if r["property_id"] in leased_pids or r["status"] == "Available"
             ]
-            # Sort: own leased first, then available
             rows.sort(key=lambda r: (
                 0 if r["property_id"] in leased_pids else 1,
                 r["property_id"],
@@ -286,7 +276,6 @@ class PropertiesScreen(QWidget):
 
         self.count_label.setText(f"{len(rows)} propert(y/ies)")
 
-        # ---- Populate
         if is_admin_like:
             self._populate_table(rows)
         else:
@@ -298,15 +287,26 @@ class PropertiesScreen(QWidget):
         for r, p in enumerate(rows):
             self.table.insertRow(r)
             self.table.setRowHeight(r, 42)
+
+            price = p.get("listing_price")
+            price_str = f"R{price:,.2f}" if price is not None else "—"
+
             self.table.setItem(r, 0, QTableWidgetItem(str(p["property_id"])))
             self.table.setItem(r, 1, QTableWidgetItem(p["address"] or ""))
             self.table.setItem(r, 2, QTableWidgetItem(p["property_type"] or ""))
             self.table.setItem(r, 3, QTableWidgetItem(p["status"] or ""))
-            self.table.setItem(r, 4, QTableWidgetItem(p["build_details"] or ""))
+
+            price_item = QTableWidgetItem(price_str)
+            if price is not None:
+                # Colour the price in the primary accent for visibility
+                from PySide6.QtGui import QColor, QBrush
+                price_item.setForeground(QBrush(QColor(theme.PRIMARY)))
+            self.table.setItem(r, 4, price_item)
+
+            self.table.setItem(r, 5, QTableWidgetItem(p["build_details"] or ""))
 
     # ------------------------------------------------------------------ cards
     def _populate_cards(self, rows, is_tenant: bool):
-        # Clear
         while self.cards_grid.count():
             item = self.cards_grid.takeAt(0)
             w = item.widget()
@@ -323,22 +323,20 @@ class PropertiesScreen(QWidget):
             return
 
         for i, p in enumerate(rows):
-            card = PropertyCard(
-                p,
-                on_click=self._on_card_click,
-            )
+            card = PropertyCard(p, on_click=self._on_card_click)
             row = i // CARD_COLS
             col = i % CARD_COLS
             self.cards_grid.addWidget(card, row, col)
 
     def _on_card_click(self, property_data):
-        # For now, show a simple details popup.
-        # In Phase 5 this becomes a rich detail view with image gallery.
         d = property_data
+        price = d.get("listing_price")
+        price_str = f"R{price:,.2f} / month" if price else "Price on request"
         msg = (
             f"<b>{d.get('address', '')}</b><br><br>"
             f"<b>Type:</b> {d.get('property_type') or '—'}<br>"
             f"<b>Status:</b> {d.get('status') or '—'}<br>"
+            f"<b>Rent:</b> {price_str}<br>"
             f"<b>Details:</b> {d.get('build_details') or '—'}"
         )
         box = QMessageBox(self)
