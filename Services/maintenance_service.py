@@ -1,4 +1,4 @@
-print(">>> maintenance_service.py V1 <<<")
+print(">>> maintenance_service.py V2 <<<")
 
 from datetime import datetime
 from Repositories.maintenance_repository import MaintenanceRepository
@@ -19,7 +19,8 @@ ALLOWED_TRANSITIONS = {
     "Closed":       set(),
 }
 
-MANAGER_ROLES = {"Administrator", "Property Manager"}
+MANAGER_ROLES       = {"Administrator", "Property Manager"}
+STATUS_CHANGE_ROLES = {"Administrator", "Property Manager", "Owner"}
 
 
 class MaintenanceService:
@@ -69,7 +70,6 @@ class MaintenanceService:
         role = (session_user or {}).get("role", "")
         uid = (session_user or {}).get("user_id")
 
-        # ---- role-based scope
         if role == "Tenant" and uid:
             rows = self.requests.list_for_submitter(uid)
         elif role == "Owner" and uid:
@@ -79,7 +79,6 @@ class MaintenanceService:
         else:
             rows = self.requests.list_all()
 
-        # ---- user filters
         out = []
         for r in rows:
             d = self._enrich(r)
@@ -103,8 +102,6 @@ class MaintenanceService:
 
     # ------------------------------------------------------------------ writes
     def submit_request(self, data: dict, session_user: dict):
-        """Tenant (or higher) submits a maintenance request for a property
-        they have an active lease on."""
         try:
             property_id = int(data.get("property_id") or 0)
         except (TypeError, ValueError):
@@ -135,6 +132,12 @@ class MaintenanceService:
             if not has_active:
                 return False, "You can only report maintenance for properties you lease."
 
+        # Owners must own the property
+        if role == "Owner":
+            owned_pids = set(self.ownerships.property_ids_for_owner(uid))
+            if property_id not in owned_pids:
+                return False, "You can only report maintenance on properties you own."
+
         req = self.requests.create(
             property_id=property_id,
             submitted_by=uid,
@@ -142,11 +145,8 @@ class MaintenanceService:
             priority=priority,
             status="Open",
         )
-
-        # Recalculate property status (now has an open request)
         self._recalculate_property_status(property_id)
 
-        # Notify managers/owners — for now, notify all admins
         for u in self.users.list_all():
             if u.role.value in MANAGER_ROLES:
                 self.notifications.emit(
@@ -163,9 +163,9 @@ class MaintenanceService:
         return True, f"Request #{req.request_id} submitted."
 
     def update_status(self, request_id: int, new_status: str, session_user: dict):
-        # Permission: managers and admins only
-        if session_user.get("role") not in MANAGER_ROLES:
-            return False, "Only managers or administrators can update request status."
+        role = session_user.get("role", "")
+        if role not in STATUS_CHANGE_ROLES:
+            return False, "Only managers, administrators, or owners can update request status."
 
         if new_status not in VALID_STATUSES:
             return False, f"Invalid status: {new_status}."
@@ -174,6 +174,13 @@ class MaintenanceService:
         if not req:
             return False, "Request not found."
 
+        # Owner scope: only on their own properties
+        if role == "Owner":
+            uid = session_user.get("user_id")
+            owned_pids = set(self.ownerships.property_ids_for_owner(uid))
+            if req.property_id not in owned_pids:
+                return False, "You may only update requests on your own properties."
+
         allowed = ALLOWED_TRANSITIONS.get(req.status, set())
         if new_status not in allowed:
             return False, f"Cannot move from {req.status} to {new_status}."
@@ -181,11 +188,9 @@ class MaintenanceService:
         completed_at = datetime.utcnow() if new_status == "Closed" else None
         self.requests.update_status(request_id, new_status, completed_at)
 
-        # Recalculate property status when request opens or closes
         if new_status in ("Closed", "In Progress", "Resolved"):
             self._recalculate_property_status(req.property_id)
 
-        # Notify the submitter
         self.notifications.emit(
             user_id=req.submitted_by,
             type="maintenance_update",

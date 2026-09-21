@@ -1,8 +1,7 @@
-print(">>> maintenance_detail_dialog.py V2 <<<")
+print(">>> maintenance_detail_dialog.py V3 <<<")
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox
 )
 from PySide6.QtCore import Qt
 from Services.maintenance_service import ALLOWED_TRANSITIONS
@@ -66,9 +65,10 @@ class MaintenanceDetailDialog(QDialog):
         layout.addSpacing(10)
 
         role = self.session_user.get("role", "")
-        self.is_manager = role in ("Administrator", "Property Manager")
+        # Owner can now update too — service enforces ownership check
+        can_change = role in ("Administrator", "Property Manager", "Owner")
 
-        if self.is_manager:
+        if can_change:
             current = d.get("status", "")
             allowed = sorted(ALLOWED_TRANSITIONS.get(current, set()))
             if allowed:
