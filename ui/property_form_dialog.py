@@ -1,8 +1,8 @@
-print(">>> property_form_dialog.py V3 <<<")
+print(">>> property_form_dialog.py V4 <<<")
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
-    QTextEdit, QDialogButtonBox, QLabel, QMessageBox
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox,
+    QTextEdit, QDialogButtonBox, QLabel, QMessageBox, QPushButton
 )
 from PySide6.QtCore import Qt
 from ui import theme
@@ -13,12 +13,14 @@ STATUSES = ["Available", "Occupied", "Under Maintenance", "Archived"]
 
 
 class PropertyFormDialog(QDialog):
-    def __init__(self, parent=None, property_data: dict | None = None):
+    def __init__(self, parent=None, property_data: dict | None = None,
+                 session_user: dict | None = None):
         super().__init__(parent)
         self.property_data = property_data or {}
+        self.session_user = session_user or {}
         self.is_edit = bool(property_data and property_data.get("property_id"))
         self.setWindowTitle("Edit Property" if self.is_edit else "Add Property")
-        self.setFixedSize(500, 560)
+        self.setFixedSize(500, 620)
         self.setStyleSheet(f"""
             QDialog {{ background: {theme.BG_APP}; }}
             QLabel {{ color: {theme.TEXT_MAIN}; font-size: {theme.FS_BASE}px; }}
@@ -28,7 +30,7 @@ class PropertyFormDialog(QDialog):
     def _build(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
 
         title = QLabel("Edit Property" if self.is_edit else "Add Property")
         title.setStyleSheet(
@@ -39,14 +41,12 @@ class PropertyFormDialog(QDialog):
 
         subtitle = QLabel(
             "Update the fields below" if self.is_edit
-            else "Fill in the property details"
+            else "Fill in the property details. Save first, then add images."
         )
         subtitle.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
         )
         layout.addWidget(subtitle)
-
-        layout.addSpacing(4)
 
         form = QFormLayout()
         form.setSpacing(12)
@@ -75,7 +75,6 @@ class PropertyFormDialog(QDialog):
         self.status.setStyleSheet(theme.input_qss())
         form.addRow(self._label("Status"), self.status)
 
-        # ---- Listing price
         self.listing_price = QLineEdit()
         self.listing_price.setPlaceholderText("e.g. 6500.00 (monthly rent in R)")
         self.listing_price.setFixedHeight(40)
@@ -88,12 +87,27 @@ class PropertyFormDialog(QDialog):
         self.build_details.setPlaceholderText(
             "e.g. 3 bed, 2 bath, built 2010, 250m² yard"
         )
-        self.build_details.setFixedHeight(90)
+        self.build_details.setFixedHeight(80)
         self.build_details.setText(self.property_data.get("build_details", "") or "")
         self.build_details.setStyleSheet(theme.input_qss())
         form.addRow(self._label("Build Details"), self.build_details)
 
         layout.addLayout(form)
+
+        # ---- Manage Images button
+        img_row = QHBoxLayout()
+        img_row.addStretch()
+        self.btn_images = QPushButton("🖼  Manage Images")
+        self.btn_images.setCursor(Qt.PointingHandCursor)
+        self.btn_images.setFixedHeight(38)
+        self.btn_images.setStyleSheet(theme.button_qss("secondary"))
+        self.btn_images.clicked.connect(self._on_manage_images)
+        self.btn_images.setEnabled(self.is_edit)
+        if not self.is_edit:
+            self.btn_images.setToolTip("Save the property first, then add images.")
+        img_row.addWidget(self.btn_images)
+        layout.addLayout(img_row)
+
         layout.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
@@ -121,6 +135,16 @@ class PropertyFormDialog(QDialog):
             f"font-size: {theme.FS_SM}px; font-weight: bold;"
         )
         return lbl
+
+    def _on_manage_images(self):
+        from ui.property_images_dialog import PropertyImagesDialog
+        dlg = PropertyImagesDialog(
+            self,
+            property_id=self.property_data.get("property_id"),
+            property_address=self.property_data.get("address", ""),
+            session_user=self.session_user,
+        )
+        dlg.exec()
 
     def _on_accept(self):
         if not self.address.text().strip():

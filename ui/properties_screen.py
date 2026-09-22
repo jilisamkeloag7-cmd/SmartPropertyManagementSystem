@@ -1,4 +1,4 @@
-print(">>> properties_screen.py V4 <<<")
+print(">>> properties_screen.py V5 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -7,8 +7,10 @@ from PySide6.QtWidgets import (
     QGridLayout, QFrame
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QBrush
 from Controllers.property_controller import PropertyController
 from ui.property_form_dialog import PropertyFormDialog
+from ui.property_detail_dialog import PropertyDetailDialog
 from ui.widgets.property_card import PropertyCard
 from ui import theme
 
@@ -29,7 +31,6 @@ class PropertiesScreen(QWidget):
         self.role = ""
         self._build()
 
-    # ------------------------------------------------------------------ API
     def set_user(self, user_data: dict):
         self.user_data = user_data or {}
         self.role = self.user_data.get("role", "")
@@ -38,7 +39,6 @@ class PropertiesScreen(QWidget):
     def refresh(self):
         self._refresh_all()
 
-    # ------------------------------------------------------------------ UI
     def _build(self):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -58,9 +58,7 @@ class PropertiesScreen(QWidget):
         layout.setContentsMargins(30, 26, 30, 26)
         layout.setSpacing(18)
 
-        # ============================================================
-        # HEADER
-        # ============================================================
+        # Header
         header = QHBoxLayout()
         header.setSpacing(12)
 
@@ -101,9 +99,7 @@ class PropertiesScreen(QWidget):
 
         layout.addLayout(header)
 
-        # ============================================================
-        # FILTERS
-        # ============================================================
+        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
@@ -132,18 +128,13 @@ class PropertiesScreen(QWidget):
 
         layout.addLayout(filters_row)
 
-        # ============================================================
-        # COUNT
-        # ============================================================
         self.count_label = QLabel("0 property record(s)")
         self.count_label.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
         )
         layout.addWidget(self.count_label)
 
-        # ============================================================
-        # ADMIN TABLE (6 columns now — price added)
-        # ============================================================
+        # Table
         self.table = QTableWidget()
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(
@@ -192,9 +183,7 @@ class PropertiesScreen(QWidget):
         hv.setSectionResizeMode(5, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        # ============================================================
-        # CARD GRID (Owner / Tenant)
-        # ============================================================
+        # Cards
         self.cards_container = QWidget()
         self.cards_container.setStyleSheet("background: transparent;")
         self.cards_grid = QGridLayout(self.cards_container)
@@ -203,9 +192,7 @@ class PropertiesScreen(QWidget):
         self.cards_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         layout.addWidget(self.cards_container, stretch=1)
 
-        # ============================================================
-        # ACTIONS ROW
-        # ============================================================
+        # Actions
         self.actions_row = QHBoxLayout()
         self.actions_row.setSpacing(10)
         self.actions_row.addStretch()
@@ -226,7 +213,6 @@ class PropertiesScreen(QWidget):
 
         layout.addLayout(self.actions_row)
 
-    # ------------------------------------------------------------------ refresh
     def _refresh_all(self):
         is_admin_like = self.role in ("Administrator", "Property Manager")
         is_owner = self.role == "Owner"
@@ -281,7 +267,6 @@ class PropertiesScreen(QWidget):
         else:
             self._populate_cards(rows, is_tenant=is_tenant)
 
-    # ------------------------------------------------------------------ table
     def _populate_table(self, rows):
         self.table.setRowCount(0)
         for r, p in enumerate(rows):
@@ -298,14 +283,11 @@ class PropertiesScreen(QWidget):
 
             price_item = QTableWidgetItem(price_str)
             if price is not None:
-                # Colour the price in the primary accent for visibility
-                from PySide6.QtGui import QColor, QBrush
                 price_item.setForeground(QBrush(QColor(theme.PRIMARY)))
             self.table.setItem(r, 4, price_item)
 
             self.table.setItem(r, 5, QTableWidgetItem(p["build_details"] or ""))
 
-    # ------------------------------------------------------------------ cards
     def _populate_cards(self, rows, is_tenant: bool):
         while self.cards_grid.count():
             item = self.cards_grid.takeAt(0)
@@ -329,24 +311,9 @@ class PropertiesScreen(QWidget):
             self.cards_grid.addWidget(card, row, col)
 
     def _on_card_click(self, property_data):
-        d = property_data
-        price = d.get("listing_price")
-        price_str = f"R{price:,.2f} / month" if price else "Price on request"
-        msg = (
-            f"<b>{d.get('address', '')}</b><br><br>"
-            f"<b>Type:</b> {d.get('property_type') or '—'}<br>"
-            f"<b>Status:</b> {d.get('status') or '—'}<br>"
-            f"<b>Rent:</b> {price_str}<br>"
-            f"<b>Details:</b> {d.get('build_details') or '—'}"
-        )
-        box = QMessageBox(self)
-        box.setWindowTitle("Property Details")
-        box.setTextFormat(Qt.RichText)
-        box.setText(msg)
-        box.setStandardButtons(QMessageBox.Ok)
-        box.exec()
+        dlg = PropertyDetailDialog(self, property_data=property_data)
+        dlg.exec()
 
-    # ------------------------------------------------------------------ helpers
     def _selected_property_id(self):
         row = self.table.currentRow()
         if row < 0:
@@ -354,12 +321,12 @@ class PropertiesScreen(QWidget):
         item = self.table.item(row, 0)
         return int(item.text()) if item else None
 
-    # ------------------------------------------------------------------ handlers
     def _go_dashboard(self):
         self.parent_window._set_screen("dashboard")
 
     def _on_add(self):
-        dlg = PropertyFormDialog(self, property_data=None)
+        dlg = PropertyFormDialog(self, property_data=None,
+                                 session_user=self.user_data)
         if dlg.exec():
             ok, msg = self.controller.create(dlg.get_data(), self.user_data)
             if ok:
@@ -377,7 +344,8 @@ class PropertiesScreen(QWidget):
         if not data:
             QMessageBox.warning(self, "Error", "Property not found.")
             return
-        dlg = PropertyFormDialog(self, property_data=data)
+        dlg = PropertyFormDialog(self, property_data=data,
+                                 session_user=self.user_data)
         if dlg.exec():
             ok, msg = self.controller.update(pid, dlg.get_data(), self.user_data)
             if ok:

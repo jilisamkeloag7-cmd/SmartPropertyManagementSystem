@@ -1,12 +1,15 @@
-print(">>> property_controller.py V1 <<<")
+print(">>> property_controller.py V2 <<<")
 
 from Services.property_service import PropertyService
+from Services.property_image_service import PropertyImageService
 
 
 class PropertyController:
     def __init__(self):
         self.service = PropertyService()
+        self.images = PropertyImageService()
 
+    # ---- properties
     def list(self, filters: dict | None = None):
         return self.service.list_properties(filters)
 
@@ -21,3 +24,16 @@ class PropertyController:
 
     def archive(self, property_id: int, session_user: dict):
         return self.service.archive_property(property_id, session_user)
+
+    # ---- images
+    def list_images(self, property_id: int):
+        return self.images.list_for_property(property_id)
+
+    def first_image_path(self, property_id: int):
+        return self.images.first_image_path(property_id)
+
+    def add_image(self, property_id: int, source_path: str, session_user: dict):
+        return self.images.add_image(property_id, source_path, session_user)
+
+    def remove_image(self, image_id: int, session_user: dict):
+        return self.images.remove_image(image_id, session_user)

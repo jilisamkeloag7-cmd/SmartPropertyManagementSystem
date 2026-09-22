@@ -1,9 +1,12 @@
-print(">>> property_card.py V2 <<<")
+print(">>> property_card.py V3 <<<")
 
+import os
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton)
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from ui import theme
+from Controllers.property_controller import PropertyController
 
 
 CARD_W = 260
@@ -19,6 +22,7 @@ class PropertyCard(QFrame):
         self.on_click = on_click
         self.action_label = action_label
         self.on_action = on_action
+        self._controller = PropertyController()
         self._build()
 
     def _build(self):
@@ -39,8 +43,8 @@ class PropertyCard(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # ---- Image area (placeholder until Phase B1)
-        image_area = QLabel("🏠")
+        # ---- Image area
+        image_area = QLabel()
         image_area.setAlignment(Qt.AlignCenter)
         image_area.setFixedHeight(IMAGE_H)
         image_area.setStyleSheet(f"""
@@ -50,6 +54,33 @@ class PropertyCard(QFrame):
             font-size: 48px;
             color: {theme.PRIMARY};
         """)
+
+        # Try to load first image
+        img_path = None
+        try:
+            img_path = self._controller.first_image_path(
+                self.property_data.get("property_id")
+            )
+        except Exception:
+            pass
+
+        if img_path and os.path.isfile(img_path):
+            pix = QPixmap(img_path)
+            if not pix.isNull():
+                scaled = pix.scaled(
+                    CARD_W, IMAGE_H, Qt.KeepAspectRatioByExpanding,
+                    Qt.SmoothTransformation,
+                )
+                # Crop to exact size (centred)
+                x = max(0, (scaled.width() - CARD_W) // 2)
+                y = max(0, (scaled.height() - IMAGE_H) // 2)
+                cropped = scaled.copy(x, y, CARD_W, IMAGE_H)
+                image_area.setPixmap(cropped)
+            else:
+                image_area.setText("🏠")
+        else:
+            image_area.setText("🏠")
+
         outer.addWidget(image_area)
 
         # ---- Info area
@@ -57,7 +88,6 @@ class PropertyCard(QFrame):
         info.setContentsMargins(14, 12, 14, 12)
         info.setSpacing(6)
 
-        # Address
         addr = QLabel(self.property_data.get("address", "(no address)"))
         addr.setWordWrap(True)
         addr.setMaximumHeight(36)
@@ -67,7 +97,7 @@ class PropertyCard(QFrame):
         )
         info.addWidget(addr)
 
-        # ---- Price (prominent)
+        # ---- Price
         price = self.property_data.get("listing_price")
         if price is not None and price > 0:
             price_row = QHBoxLayout()
@@ -97,7 +127,7 @@ class PropertyCard(QFrame):
             )
             info.addWidget(no_price)
 
-        # ---- Type + Status badges
+        # ---- Badges
         meta = QHBoxLayout()
         meta.setSpacing(6)
 
@@ -135,7 +165,6 @@ class PropertyCard(QFrame):
 
         info.addStretch()
 
-        # ---- Optional action button
         if self.action_label and self.on_action:
             btn = QPushButton(self.action_label)
             btn.setCursor(Qt.PointingHandCursor)

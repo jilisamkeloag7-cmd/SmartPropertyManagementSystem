@@ -1,4 +1,4 @@
-print(">>> property.py V2 <<<")
+print(">>> property.py V3 <<<")
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float
 from sqlalchemy.orm import relationship
@@ -11,10 +11,10 @@ class Property(Base):
 
     property_id   = Column(Integer, primary_key=True, autoincrement=True)
     address       = Column(String(255), nullable=False)
-    property_type = Column(String(50))   # House / Apartment / Commercial / Other
-    build_details = Column(Text)         # year, size, rooms, etc.
+    property_type = Column(String(50))
+    build_details = Column(Text)
     status        = Column(String(30), default="Available")
-    listing_price = Column(Float, nullable=True)   # monthly asking rent in Rands
+    listing_price = Column(Float, nullable=True)
     created_at    = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -24,6 +24,9 @@ class Property(Base):
                                 cascade="all, delete-orphan")
     maintenance  = relationship("MaintenanceRequest", back_populates="property",
                                 cascade="all, delete-orphan")
+    images       = relationship("PropertyImage", back_populates="property",
+                                cascade="all, delete-orphan",
+                                order_by="PropertyImage.order_index")
 
     def __repr__(self):
         return f"<Property #{self.property_id} {self.address}>"
