@@ -1,4 +1,4 @@
-print(">>> lease_service.py V2 <<<")
+print(">>> lease_service.py V3 <<<")
 
 from datetime import date
 from Repositories.lease_repository import LeaseRepository
@@ -9,8 +9,9 @@ from Services.notification_service import NotificationService
 from Models.user import UserRole
 
 
-WRITE_ROLES = {"Administrator", "Property Manager"}
+WRITE_ROLES   = {"Administrator", "Property Manager"}
 APPROVE_ROLES = {"Administrator", "Property Manager"}
+ADMIN_ONLY    = {"Administrator"}
 
 
 class LeaseService:
@@ -26,6 +27,12 @@ class LeaseService:
     def _assert_write_permission(session_user):
         if not session_user or session_user.get("role") not in WRITE_ROLES:
             return False, "You do not have permission to modify leases."
+        return True, None
+
+    @staticmethod
+    def _assert_admin(session_user):
+        if not session_user or session_user.get("role") not in ADMIN_ONLY:
+            return False, "Only administrators can directly terminate leases."
         return True, None
 
     def _recalculate_property_status(self, property_id: int):
@@ -141,8 +148,12 @@ class LeaseService:
         return True, f"Lease #{lease.lease_id} created."
 
     def terminate_lease(self, lease_id: int, session_user: dict):
-        """Direct termination by manager/admin."""
-        ok, err = self._assert_write_permission(session_user)
+        """
+        Direct termination — ADMIN ONLY.
+        Bypasses the tenant termination-request workflow.
+        Managers should use approve_termination to action a tenant request.
+        """
+        ok, err = self._assert_admin(session_user)
         if not ok:
             return False, err
 
@@ -156,14 +167,12 @@ class LeaseService:
         self._recalculate_property_status(lease.property_id)
         return True, "Lease terminated."
 
-    # ------------------------------------------------------------------ B4: tenant request workflow
+    # ------------------------------------------------------------------ termination request workflow
     def request_termination(self, lease_id: int, reason: str, session_user: dict):
-        """Tenant requests termination of their own active lease."""
         lease = self.leases.find_by_id(lease_id)
         if not lease:
             return False, "Lease not found."
 
-        # Only the tenant on this lease may request
         if session_user.get("user_id") != lease.tenant_id:
             return False, "You can only request termination of your own lease."
 
@@ -179,7 +188,6 @@ class LeaseService:
 
         self.leases.set_termination_request(lease_id, True, reason)
 
-        # Notify all managers + admins
         for u in self.users.list_all():
             if u.role.value in APPROVE_ROLES:
                 self.notifications.emit(
@@ -196,7 +204,7 @@ class LeaseService:
         return True, "Termination request submitted."
 
     def approve_termination(self, lease_id: int, session_user: dict):
-        """Manager/admin approves a pending termination request."""
+        """Manager OR admin approves a tenant's termination request."""
         ok, err = self._assert_write_permission(session_user)
         if not ok:
             return False, err
@@ -213,7 +221,6 @@ class LeaseService:
         self.leases.update_status(lease_id, "Terminated")
         self._recalculate_property_status(lease.property_id)
 
-        # Notify the tenant
         self.notifications.emit(
             user_id=lease.tenant_id,
             type="lease_termination_approved",
@@ -227,7 +234,6 @@ class LeaseService:
         return True, f"Lease #{lease_id} terminated."
 
     def reject_termination(self, lease_id: int, session_user: dict):
-        """Manager/admin rejects a pending termination request."""
         ok, err = self._assert_write_permission(session_user)
         if not ok:
             return False, err

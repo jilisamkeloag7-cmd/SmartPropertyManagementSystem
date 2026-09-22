@@ -1,4 +1,4 @@
-print(">>> payment_controller.py V2 <<<")
+print(">>> payment_controller.py V3 <<<")
 
 from Services.payment_service import PaymentService
 
@@ -21,3 +21,13 @@ class PaymentController:
 
     def check_overdue(self) -> int:
         return self.service.check_overdue()
+
+    # ---- B6: tenant + manager flow
+    def tenant_mark_paid(self, payment_id: int, reference: str, session_user: dict):
+        return self.service.tenant_mark_paid(payment_id, reference, session_user)
+
+    def manager_confirm(self, payment_id: int, session_user: dict):
+        return self.service.manager_confirm(payment_id, session_user)
+
+    def manager_reject(self, payment_id: int, reason: str, session_user: dict):
+        return self.service.manager_reject(payment_id, reason, session_user)

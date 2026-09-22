@@ -1,4 +1,4 @@
-print(">>> leases_screen.py V4 <<<")
+print(">>> leases_screen.py V5 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -23,6 +23,7 @@ class LeasesScreen(QWidget):
         self.user_data = None
         self.role = ""
         self.is_writer = False
+        self.is_admin = False
         self.is_tenant = False
         self._build()
 
@@ -30,6 +31,7 @@ class LeasesScreen(QWidget):
         self.user_data = user_data or {}
         self.role = self.user_data.get("role", "")
         self.is_writer = self.role in ("Administrator", "Property Manager")
+        self.is_admin = self.role == "Administrator"
         self.is_tenant = self.role == "Tenant"
         self._apply_role_ui()
         self.refresh()
@@ -97,7 +99,6 @@ class LeasesScreen(QWidget):
 
         layout.addLayout(header)
 
-        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
@@ -130,7 +131,6 @@ class LeasesScreen(QWidget):
         )
         layout.addWidget(self.count_label)
 
-        # Table — 7 columns (no Property ID column this time)
         self.table = QTableWidget()
         self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
@@ -175,12 +175,11 @@ class LeasesScreen(QWidget):
         hv.setSectionResizeMode(1, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        # Actions
         actions = QHBoxLayout()
         actions.setSpacing(10)
         actions.addStretch()
 
-        # Tenant-only action
+        # Tenant action
         self.btn_request_termination = QPushButton("Request Termination")
         self.btn_request_termination.setCursor(Qt.PointingHandCursor)
         self.btn_request_termination.setFixedHeight(38)
@@ -188,7 +187,7 @@ class LeasesScreen(QWidget):
         self.btn_request_termination.clicked.connect(self._on_request_termination)
         actions.addWidget(self.btn_request_termination)
 
-        # Manager action — reject
+        # Manager + admin workflow actions
         self.btn_reject = QPushButton("Reject Request")
         self.btn_reject.setCursor(Qt.PointingHandCursor)
         self.btn_reject.setFixedHeight(38)
@@ -196,7 +195,6 @@ class LeasesScreen(QWidget):
         self.btn_reject.clicked.connect(self._on_reject_termination)
         actions.addWidget(self.btn_reject)
 
-        # Manager action — approve
         self.btn_approve = QPushButton("Approve Termination")
         self.btn_approve.setCursor(Qt.PointingHandCursor)
         self.btn_approve.setFixedHeight(38)
@@ -204,11 +202,14 @@ class LeasesScreen(QWidget):
         self.btn_approve.clicked.connect(self._on_approve_termination)
         actions.addWidget(self.btn_approve)
 
-        # Manager action — direct terminate
+        # Admin-only override
         self.btn_terminate = QPushButton("Terminate Selected")
         self.btn_terminate.setCursor(Qt.PointingHandCursor)
         self.btn_terminate.setFixedHeight(38)
         self.btn_terminate.setStyleSheet(theme.button_qss("danger"))
+        self.btn_terminate.setToolTip(
+            "Direct termination — bypasses the tenant request workflow. Admin only."
+        )
         self.btn_terminate.clicked.connect(self._on_terminate_selected)
         actions.addWidget(self.btn_terminate)
 
@@ -231,9 +232,9 @@ class LeasesScreen(QWidget):
             self.title_label.setText("📄 Leases")
             self.readonly_badge.setVisible(False)
 
-        # Role-aware button visibility
+        # Button visibility
         self.btn_add.setVisible(self.is_writer)
-        self.btn_terminate.setVisible(self.is_writer)
+        self.btn_terminate.setVisible(self.is_admin)          # ← admin only
         self.btn_request_termination.setVisible(self.is_tenant)
         self.btn_reject.setVisible(self.is_writer)
         self.btn_approve.setVisible(self.is_writer)
@@ -276,8 +277,7 @@ class LeasesScreen(QWidget):
         item = self.table.item(row, 0)
         if not item:
             return None
-        lease_id = int(item.text())
-        return self.controller.get(lease_id)
+        return self.controller.get(int(item.text()))
 
     def _selected_lease_id(self):
         row = self.table.currentRow()
@@ -286,7 +286,6 @@ class LeasesScreen(QWidget):
         item = self.table.item(row, 0)
         return int(item.text()) if item else None
 
-    # ------------------------------------------------------------------ handlers
     def _go_dashboard(self):
         self.parent_window._set_screen("dashboard")
 
@@ -304,15 +303,17 @@ class LeasesScreen(QWidget):
                 QMessageBox.warning(self, "Error", msg)
 
     def _on_terminate_selected(self):
-        if not self.is_writer:
+        if not self.is_admin:
             return
         lid = self._selected_lease_id()
         if lid is None:
             QMessageBox.information(self, "No selection", "Select a lease to terminate.")
             return
         confirm = QMessageBox.question(
-            self, "Terminate lease",
-            f"Terminate lease #{lid} directly? The property will become Available again.",
+            self, "Terminate lease directly",
+            f"Terminate lease #{lid} directly?\n\n"
+            f"This bypasses the tenant request workflow. "
+            f"Use only for administrative decisions.",
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
@@ -325,7 +326,6 @@ class LeasesScreen(QWidget):
         else:
             QMessageBox.warning(self, "Error", msg)
 
-    # ---- B4: tenant request
     def _on_request_termination(self):
         if not self.is_tenant:
             return
@@ -353,7 +353,6 @@ class LeasesScreen(QWidget):
             else:
                 QMessageBox.warning(self, "Error", msg)
 
-    # ---- B4: manager approve
     def _on_approve_termination(self):
         if not self.is_writer:
             return
@@ -386,7 +385,6 @@ class LeasesScreen(QWidget):
         else:
             QMessageBox.warning(self, "Error", msg)
 
-    # ---- B4: manager reject
     def _on_reject_termination(self):
         if not self.is_writer:
             return

@@ -1,5 +1,6 @@
-print(">>> payment_repository.py V1 <<<")
+print(">>> payment_repository.py V2 <<<")
 
+from datetime import datetime
 from Database.connection import get_session
 from Models.payment import Payment
 
@@ -32,9 +33,21 @@ class PaymentRepository:
             db.close()
 
     def find_pending(self):
+        """Pending only — used by overdue check."""
         db = get_session()
         try:
             return db.query(Payment).filter(Payment.status == "Pending").all()
+        finally:
+            db.close()
+
+    def find_awaiting_confirmation(self):
+        db = get_session()
+        try:
+            return (
+                db.query(Payment)
+                .filter(Payment.status == "Awaiting Confirmation")
+                .all()
+            )
         finally:
             db.close()
 
@@ -55,6 +68,7 @@ class PaymentRepository:
             db.close()
 
     def mark_paid(self, payment_id: int, paid_date) -> bool:
+        """Manager-confirmed Paid."""
         db = get_session()
         try:
             p = db.query(Payment).filter(Payment.payment_id == payment_id).first()
@@ -62,6 +76,36 @@ class PaymentRepository:
                 return False
             p.paid_date = paid_date
             p.status = "Paid"
+            db.commit()
+            return True
+        finally:
+            db.close()
+
+    def set_tenant_claim(self, payment_id: int, reference: str) -> bool:
+        """Tenant marks the payment as made — status → Awaiting Confirmation."""
+        db = get_session()
+        try:
+            p = db.query(Payment).filter(Payment.payment_id == payment_id).first()
+            if not p:
+                return False
+            p.tenant_marked_at = datetime.utcnow()
+            p.payment_reference = reference
+            p.status = "Awaiting Confirmation"
+            db.commit()
+            return True
+        finally:
+            db.close()
+
+    def clear_tenant_claim(self, payment_id: int, new_status: str = "Pending") -> bool:
+        """Manager rejects the tenant's claim — clears claim fields, resets status."""
+        db = get_session()
+        try:
+            p = db.query(Payment).filter(Payment.payment_id == payment_id).first()
+            if not p:
+                return False
+            p.tenant_marked_at = None
+            p.payment_reference = None
+            p.status = new_status
             db.commit()
             return True
         finally:

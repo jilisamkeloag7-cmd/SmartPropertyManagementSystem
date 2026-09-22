@@ -1,21 +1,29 @@
-print(">>> seed_rich_data.py V3 <<<")
+print(">>> seed_rich_data.py V6 <<<")
 
 """
 Rich test-data seed script.
 
-WARNING: This script DELETES all existing data in the database.
+WARNING: This script DELETES all data in the database.
 Run only on development/test environments.
+
+The script PRESERVES existing property_image links across reseeds:
+before dropping tables, it snapshots the property_images rows, and
+after recreating the schema, it restores those rows for any file that
+still exists on disk.
 
 Usage:
     python -m Database.seed_rich_data
 """
 
+import os
+import re
 from datetime import date, datetime, timedelta
 from Database.connection import engine, get_session
 from Models.base import Base
 import Models  # noqa: F401
 from Models.user import User, UserRole
 from Models.property import Property
+from Models.property_image import PropertyImage
 from Models.ownership import Ownership
 from Models.lease import Lease
 from Models.payment import Payment
@@ -23,6 +31,7 @@ from Models.maintenance import MaintenanceRequest
 from Models.notification import Notification, NotificationPreference
 from Models.review import Review
 from Services.security import hash_password
+from Services.property_image_service import IMAGES_DIR
 
 
 def _d(days_offset: int) -> date:
@@ -34,7 +43,102 @@ def _dt(days_offset: int, hour: int = 9) -> datetime:
                                           hours=hour - datetime.utcnow().hour)
 
 
+# =====================================================================
+# IMAGE PRESERVATION HELPERS
+# =====================================================================
+
+def _snapshot_image_links():
+    """Read all current image links before the DB is wiped."""
+    db = get_session()
+    try:
+        rows = db.query(PropertyImage).all()
+        return [
+            (r.property_id, r.filename, r.order_index)
+            for r in rows
+        ]
+    except Exception as e:
+        # Table doesn't exist yet (first ever run) → nothing to preserve
+        print(f"[seed] No image snapshot (reason: {type(e).__name__}).")
+        return []
+    finally:
+        db.close()
+
+
+def _restore_image_links(db, snapshot, valid_property_ids: set) -> int:
+    """Re-insert image links captured before the drop. Files must exist on disk."""
+    restored = 0
+    for property_id, filename, order_index in snapshot:
+        if property_id not in valid_property_ids:
+            continue
+        full_path = os.path.join(IMAGES_DIR, filename)
+        if not os.path.isfile(full_path):
+            continue
+        db.add(PropertyImage(
+            property_id=property_id,
+            filename=filename,
+            order_index=order_index,
+        ))
+        restored += 1
+    return restored
+
+
+def _auto_link_new_files(db, valid_property_ids: set,
+                          already_linked: set) -> int:
+    """
+    Scan Assets/property_images/ for p{ID}_*.{ext} files not already
+    linked in the restored snapshot, and link them.
+
+    This handles images uploaded after a property was created but
+    before a seed run.
+    """
+    if not os.path.isdir(IMAGES_DIR):
+        return 0
+
+    pattern = re.compile(r"^p(\d+)_")
+    image_counts = {}
+    linked = 0
+
+    for filename in sorted(os.listdir(IMAGES_DIR)):
+        if filename == ".gitkeep" or not os.path.isfile(os.path.join(IMAGES_DIR, filename)):
+            continue
+        if filename in already_linked:
+            continue
+
+        m = pattern.match(filename)
+        if not m:
+            continue
+
+        try:
+            prop_id = int(m.group(1))
+        except ValueError:
+            continue
+
+        if prop_id not in valid_property_ids:
+            continue
+
+        order = image_counts.get(prop_id, 0)
+        image_counts[prop_id] = order + 1
+
+        db.add(PropertyImage(
+            property_id=prop_id,
+            filename=filename,
+            order_index=order,
+        ))
+        linked += 1
+
+    return linked
+
+
+# =====================================================================
+# MAIN SEED
+# =====================================================================
+
 def reset_and_seed():
+    # ---- 1. Snapshot image links BEFORE dropping tables
+    print("[seed] Snapshotting existing image links...")
+    image_snapshot = _snapshot_image_links()
+    print(f"[seed] {len(image_snapshot)} image link(s) snapshotted.")
+
     print("[seed] Dropping and recreating all tables...")
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
@@ -110,6 +214,26 @@ def reset_and_seed():
         db.flush()
 
         # ============================================================
+        # IMAGES — restore snapshot + auto-link new files
+        # ============================================================
+        print("[seed] Restoring property image links...")
+        valid_ids = {p1.property_id, p2.property_id, p3.property_id,
+                     p4.property_id, p5.property_id, p6.property_id,
+                     p7.property_id}
+
+        restored = _restore_image_links(db, image_snapshot, valid_ids)
+        print(f"[seed] {restored} image link(s) restored from previous session.")
+
+        # Auto-link newly added files that weren't in the snapshot
+        already_linked = {fn for _, fn, _ in image_snapshot}
+        auto_linked = _auto_link_new_files(db, valid_ids, already_linked)
+        if auto_linked:
+            print(f"[seed] {auto_linked} new image file(s) auto-linked.")
+
+        if restored == 0 and auto_linked == 0:
+            print("[seed] No images to link (that's fine — cards will show placeholders).")
+
+        # ============================================================
         # OWNERSHIPS
         # ============================================================
         print("[seed] Creating ownerships...")
@@ -134,7 +258,6 @@ def reset_and_seed():
         # LEASES
         # ============================================================
         print("[seed] Creating leases...")
-        # Active leases
         l1 = Lease(property_id=p1.property_id, tenant_id=tenant1.user_id,
                    start_date=_d(-90), end_date=_d(275),
                    rent_amount=6500.0, status="Active")
@@ -144,33 +267,24 @@ def reset_and_seed():
         l3 = Lease(property_id=p3.property_id, tenant_id=tenant3.user_id,
                    start_date=_d(-180), end_date=_d(60),
                    rent_amount=11500.0, status="Active")
-
-        # Terminated (history — gives reviewers legitimate access)
-        # Jane on Property 6
         l4 = Lease(property_id=p6.property_id, tenant_id=tenant1.user_id,
                    start_date=_d(-400), end_date=_d(-100),
                    rent_amount=4800.0, status="Terminated")
-        # Naledi on Property 6 (more recent — took over after Jane)
         l5 = Lease(property_id=p6.property_id, tenant_id=tenant3.user_id,
                    start_date=_d(-90), end_date=_d(-30),
                    rent_amount=4800.0, status="Terminated")
-        # Thabo on Property 4
         l6 = Lease(property_id=p4.property_id, tenant_id=tenant2.user_id,
                    start_date=_d(-600), end_date=_d(-400),
                    rent_amount=14000.0, status="Terminated")
-        # Naledi on Property 5
         l7 = Lease(property_id=p5.property_id, tenant_id=tenant3.user_id,
                    start_date=_d(-500), end_date=_d(-300),
                    rent_amount=18500.0, status="Terminated")
-        # Naledi on Property 1 (long ago, before Jane)
         l8 = Lease(property_id=p1.property_id, tenant_id=tenant3.user_id,
                    start_date=_d(-900), end_date=_d(-700),
                    rent_amount=6500.0, status="Terminated")
-        # Jane on Property 3 (long ago, before Naledi)
         l9 = Lease(property_id=p3.property_id, tenant_id=tenant1.user_id,
                    start_date=_d(-800), end_date=_d(-600),
                    rent_amount=11500.0, status="Terminated")
-
         db.add_all([l1, l2, l3, l4, l5, l6, l7, l8, l9])
         db.flush()
 
@@ -198,7 +312,10 @@ def reset_and_seed():
             Payment(lease_id=l3.lease_id, amount=11500.0,
                     due_date=_d(-60), paid_date=_d(-62), status="Paid"),
             Payment(lease_id=l3.lease_id, amount=11500.0,
-                    due_date=_d(3), paid_date=None, status="Pending"),
+                    due_date=_d(3), paid_date=None,
+                    status="Awaiting Confirmation",
+                    tenant_marked_at=_dt(-1),
+                    payment_reference="EFT-2026-09-21-A17X — paid via capitec app"),
 
             Payment(lease_id=l4.lease_id, amount=4800.0,
                     due_date=_d(-200), paid_date=_d(-200), status="Paid"),
@@ -284,10 +401,7 @@ def reset_and_seed():
         # REVIEWS
         # ============================================================
         print("[seed] Creating reviews...")
-        # Reviewer/property pairs must be backed by lease history (see leases above).
         reviews = [
-            # Jane — Property 1 (current active), Property 3 (historical),
-            #        Property 6 (historical)
             Review(property_id=p1.property_id, reviewer_id=tenant1.user_id,
                    rating=4,
                    comment=("Great location, walking distance to shops. "
@@ -305,7 +419,6 @@ def reset_and_seed():
                             "A bit small for two people but fine for one."),
                    created_at=_dt(-150)),
 
-            # Thabo — Property 2 (current active), Property 4 (historical)
             Review(property_id=p2.property_id, reviewer_id=tenant2.user_id,
                    rating=5,
                    comment=("Stunning sea views — waking up to the ocean was "
@@ -317,8 +430,6 @@ def reset_and_seed():
                             "Parking was tight during peak hours."),
                    created_at=_dt(-450)),
 
-            # Naledi — Property 1 (historical), Property 3 (current active),
-            #          Property 5 (historical), Property 6 (historical)
             Review(property_id=p1.property_id, reviewer_id=tenant3.user_id,
                    rating=4,
                    comment=("Comfortable home in a quiet neighbourhood. "

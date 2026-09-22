@@ -1,4 +1,4 @@
-print(">>> property_image_service.py V1 <<<")
+print(">>> property_image_service.py V2 <<<")
 
 import os
 import shutil
@@ -7,13 +7,8 @@ import sys
 from Repositories.property_image_repository import PropertyImageRepository
 
 
-# Supported file extensions
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
-
-# Max file size (MB) — reject larger files to keep DB backups light
 MAX_SIZE_MB = 5
-
-# Write permission roles
 WRITE_ROLES = {"Administrator", "Property Manager"}
 
 
@@ -79,8 +74,9 @@ class PropertyImageService:
         if size_mb > MAX_SIZE_MB:
             return False, f"File is too large ({size_mb:.1f} MB). Max {MAX_SIZE_MB} MB."
 
-        # Generate a unique filename
-        new_name = f"{uuid.uuid4().hex}{ext}"
+        # Filename pattern: p{property_id}_{uuid}.{ext}
+        # This lets the seed script auto-relink images to properties after a reseed.
+        new_name = f"p{property_id}_{uuid.uuid4().hex}{ext}"
         dest = os.path.join(IMAGES_DIR, new_name)
 
         try:
@@ -88,7 +84,6 @@ class PropertyImageService:
         except Exception as e:
             return False, f"Failed to save image: {e}"
 
-        # Insert DB row
         order_index = self.images.count_for_property(property_id)
         self.images.create(property_id, new_name, order_index)
 
@@ -103,7 +98,6 @@ class PropertyImageService:
         if not img:
             return False, "Image not found."
 
-        # Remove file from disk (ignore errors — DB row is source of truth)
         path = os.path.join(IMAGES_DIR, img.filename)
         try:
             if os.path.isfile(path):
