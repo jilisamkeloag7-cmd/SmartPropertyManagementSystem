@@ -1,13 +1,16 @@
-print(">>> lease_service.py V1 <<<")
+print(">>> lease_service.py V2 <<<")
 
 from datetime import date
 from Repositories.lease_repository import LeaseRepository
 from Repositories.payment_repository import PaymentRepository
 from Repositories.property_repository import PropertyRepository
 from Repositories.user_repository import UserRepository
+from Services.notification_service import NotificationService
 from Models.user import UserRole
 
+
 WRITE_ROLES = {"Administrator", "Property Manager"}
+APPROVE_ROLES = {"Administrator", "Property Manager"}
 
 
 class LeaseService:
@@ -16,6 +19,7 @@ class LeaseService:
         self.payments = PaymentRepository()
         self.properties = PropertyRepository()
         self.users = UserRepository()
+        self.notifications = NotificationService()
 
     # ------------------------------------------------------------------ helpers
     @staticmethod
@@ -25,7 +29,6 @@ class LeaseService:
         return True, None
 
     def _recalculate_property_status(self, property_id: int):
-        """Mirror PropertyService.recalculate_status without circular import."""
         if self.leases.has_active_lease(property_id):
             new_status = "Occupied"
         elif self.properties.has_open_maintenance(property_id):
@@ -47,6 +50,8 @@ class LeaseService:
             "end_date": lease.end_date,
             "rent_amount": lease.rent_amount,
             "status": lease.status,
+            "termination_requested": bool(lease.termination_requested),
+            "termination_reason": lease.termination_reason or "",
         }
 
     def _enrich(self, lease):
@@ -117,7 +122,6 @@ class LeaseService:
         if self.leases.has_active_lease(property_id):
             return False, "This property already has an active lease."
 
-        # Create the lease
         lease = self.leases.create(
             property_id=property_id,
             tenant_id=tenant_id,
@@ -126,7 +130,6 @@ class LeaseService:
             rent_amount=rent_amount,
         )
 
-        # Generate the first payment
         self.payments.create(
             lease_id=lease.lease_id,
             amount=lease.rent_amount,
@@ -134,12 +137,11 @@ class LeaseService:
             status="Pending",
         )
 
-        # Update property status
         self._recalculate_property_status(property_id)
-
         return True, f"Lease #{lease.lease_id} created."
 
     def terminate_lease(self, lease_id: int, session_user: dict):
+        """Direct termination by manager/admin."""
         ok, err = self._assert_write_permission(session_user)
         if not ok:
             return False, err
@@ -153,3 +155,99 @@ class LeaseService:
         self.leases.update_status(lease_id, "Terminated")
         self._recalculate_property_status(lease.property_id)
         return True, "Lease terminated."
+
+    # ------------------------------------------------------------------ B4: tenant request workflow
+    def request_termination(self, lease_id: int, reason: str, session_user: dict):
+        """Tenant requests termination of their own active lease."""
+        lease = self.leases.find_by_id(lease_id)
+        if not lease:
+            return False, "Lease not found."
+
+        # Only the tenant on this lease may request
+        if session_user.get("user_id") != lease.tenant_id:
+            return False, "You can only request termination of your own lease."
+
+        if lease.status != "Active":
+            return False, f"Lease is {lease.status} — cannot request termination."
+
+        if lease.termination_requested:
+            return False, "A termination request is already pending for this lease."
+
+        reason = (reason or "").strip()
+        if len(reason) < 10:
+            return False, "Please provide a reason (at least 10 characters)."
+
+        self.leases.set_termination_request(lease_id, True, reason)
+
+        # Notify all managers + admins
+        for u in self.users.list_all():
+            if u.role.value in APPROVE_ROLES:
+                self.notifications.emit(
+                    user_id=u.user_id,
+                    type="lease_termination_request",
+                    title=f"Termination requested — Lease #{lease_id}",
+                    message=(
+                        f"Tenant has requested to terminate lease #{lease_id}. "
+                        f"Reason: {reason[:120]}"
+                    ),
+                    priority="High",
+                )
+
+        return True, "Termination request submitted."
+
+    def approve_termination(self, lease_id: int, session_user: dict):
+        """Manager/admin approves a pending termination request."""
+        ok, err = self._assert_write_permission(session_user)
+        if not ok:
+            return False, err
+
+        lease = self.leases.find_by_id(lease_id)
+        if not lease:
+            return False, "Lease not found."
+        if not lease.termination_requested:
+            return False, "No pending termination request on this lease."
+        if lease.status != "Active":
+            return False, f"Lease is {lease.status} — cannot approve."
+
+        self.leases.set_termination_request(lease_id, False, None)
+        self.leases.update_status(lease_id, "Terminated")
+        self._recalculate_property_status(lease.property_id)
+
+        # Notify the tenant
+        self.notifications.emit(
+            user_id=lease.tenant_id,
+            type="lease_termination_approved",
+            title=f"Termination approved — Lease #{lease_id}",
+            message=(
+                "Your lease termination request has been approved. "
+                "The lease is now terminated."
+            ),
+            priority="High",
+        )
+        return True, f"Lease #{lease_id} terminated."
+
+    def reject_termination(self, lease_id: int, session_user: dict):
+        """Manager/admin rejects a pending termination request."""
+        ok, err = self._assert_write_permission(session_user)
+        if not ok:
+            return False, err
+
+        lease = self.leases.find_by_id(lease_id)
+        if not lease:
+            return False, "Lease not found."
+        if not lease.termination_requested:
+            return False, "No pending termination request on this lease."
+
+        self.leases.set_termination_request(lease_id, False, None)
+
+        self.notifications.emit(
+            user_id=lease.tenant_id,
+            type="lease_termination_rejected",
+            title=f"Termination rejected — Lease #{lease_id}",
+            message=(
+                "Your lease termination request was reviewed and declined. "
+                "Please contact management for details."
+            ),
+            priority="High",
+        )
+        return True, "Termination request rejected. Lease remains active."

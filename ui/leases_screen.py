@@ -1,4 +1,4 @@
-print(">>> leases_screen.py V3 <<<")
+print(">>> leases_screen.py V4 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -6,8 +6,10 @@ from PySide6.QtWidgets import (
     QMessageBox, QHeaderView, QAbstractItemView
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QBrush
 from Controllers.lease_controller import LeaseController
 from ui.lease_form_dialog import LeaseFormDialog
+from ui.lease_termination_dialog import LeaseTerminationDialog
 from ui import theme
 
 from Repositories.ownership_repository import OwnershipRepository
@@ -21,13 +23,14 @@ class LeasesScreen(QWidget):
         self.user_data = None
         self.role = ""
         self.is_writer = False
+        self.is_tenant = False
         self._build()
 
-    # ------------------------------------------------------------------ API
     def set_user(self, user_data: dict):
         self.user_data = user_data or {}
         self.role = self.user_data.get("role", "")
         self.is_writer = self.role in ("Administrator", "Property Manager")
+        self.is_tenant = self.role == "Tenant"
         self._apply_role_ui()
         self.refresh()
 
@@ -38,7 +41,6 @@ class LeasesScreen(QWidget):
         }
         rows = self.controller.list(filters)
 
-        # ---- Role-based scope
         if self.role == "Owner":
             uid = self.user_data.get("user_id")
             owned_pids = set(OwnershipRepository().property_ids_for_owner(uid))
@@ -46,18 +48,15 @@ class LeasesScreen(QWidget):
         elif self.role == "Tenant":
             uid = self.user_data.get("user_id")
             rows = [r for r in rows if r["tenant_id"] == uid]
-        # Admin/Manager: no scoping
 
         self._populate_table(rows)
         self.count_label.setText(f"{len(rows)} lease record(s)")
 
-    # ------------------------------------------------------------------ UI
     def _build(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 26, 30, 26)
         layout.setSpacing(18)
 
-        # ---- Header
         header = QHBoxLayout()
         header.setSpacing(12)
 
@@ -98,7 +97,7 @@ class LeasesScreen(QWidget):
 
         layout.addLayout(header)
 
-        # ---- Filters
+        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
@@ -125,18 +124,17 @@ class LeasesScreen(QWidget):
 
         layout.addLayout(filters_row)
 
-        # ---- Count
         self.count_label = QLabel("0 lease record(s)")
         self.count_label.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
         )
         layout.addWidget(self.count_label)
 
-        # ---- Table
+        # Table — 7 columns (no Property ID column this time)
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
-            ["ID", "Property", "Tenant", "Start", "End", "Rent", "Status"]
+            ["ID", "Property", "Tenant", "Start", "End", "Rent", "Status", "Request"]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -172,16 +170,41 @@ class LeasesScreen(QWidget):
             }}
         """)
         hv = self.table.horizontalHeader()
-        for i in range(7):
+        for i in range(8):
             hv.setSectionResizeMode(i, QHeaderView.ResizeToContents)
         hv.setSectionResizeMode(1, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        # ---- Actions
+        # Actions
         actions = QHBoxLayout()
         actions.setSpacing(10)
         actions.addStretch()
 
+        # Tenant-only action
+        self.btn_request_termination = QPushButton("Request Termination")
+        self.btn_request_termination.setCursor(Qt.PointingHandCursor)
+        self.btn_request_termination.setFixedHeight(38)
+        self.btn_request_termination.setStyleSheet(theme.button_qss("warning"))
+        self.btn_request_termination.clicked.connect(self._on_request_termination)
+        actions.addWidget(self.btn_request_termination)
+
+        # Manager action — reject
+        self.btn_reject = QPushButton("Reject Request")
+        self.btn_reject.setCursor(Qt.PointingHandCursor)
+        self.btn_reject.setFixedHeight(38)
+        self.btn_reject.setStyleSheet(theme.button_qss("secondary"))
+        self.btn_reject.clicked.connect(self._on_reject_termination)
+        actions.addWidget(self.btn_reject)
+
+        # Manager action — approve
+        self.btn_approve = QPushButton("Approve Termination")
+        self.btn_approve.setCursor(Qt.PointingHandCursor)
+        self.btn_approve.setFixedHeight(38)
+        self.btn_approve.setStyleSheet(theme.button_qss("danger"))
+        self.btn_approve.clicked.connect(self._on_approve_termination)
+        actions.addWidget(self.btn_approve)
+
+        # Manager action — direct terminate
         self.btn_terminate = QPushButton("Terminate Selected")
         self.btn_terminate.setCursor(Qt.PointingHandCursor)
         self.btn_terminate.setFixedHeight(38)
@@ -191,7 +214,6 @@ class LeasesScreen(QWidget):
 
         layout.addLayout(actions)
 
-    # ------------------------------------------------------------------ role UI
     def _apply_role_ui(self):
         if self.role == "Administrator":
             self.title_label.setText("📄 All Leases")
@@ -204,21 +226,30 @@ class LeasesScreen(QWidget):
             self.readonly_badge.setVisible(True)
         elif self.role == "Tenant":
             self.title_label.setText("📄 My Leases")
-            self.readonly_badge.setVisible(True)
+            self.readonly_badge.setVisible(False)
         else:
             self.title_label.setText("📄 Leases")
             self.readonly_badge.setVisible(False)
 
-        # Write controls only for writers
+        # Role-aware button visibility
         self.btn_add.setVisible(self.is_writer)
         self.btn_terminate.setVisible(self.is_writer)
+        self.btn_request_termination.setVisible(self.is_tenant)
+        self.btn_reject.setVisible(self.is_writer)
+        self.btn_approve.setVisible(self.is_writer)
 
-    # ------------------------------------------------------------------ helpers
     def _populate_table(self, rows):
         self.table.setRowCount(0)
+        warning_bg = QBrush(QColor(theme.WARNING_SOFT))
+        warning_fg = QBrush(QColor(theme.WARNING_HOVER))
+
         for r, l in enumerate(rows):
             self.table.insertRow(r)
             self.table.setRowHeight(r, 42)
+
+            request_pending = l.get("termination_requested", False)
+            request_label = "⚠ Pending" if request_pending else "—"
+
             cells = [
                 str(l["lease_id"]),
                 l["property_address"] or "",
@@ -227,9 +258,26 @@ class LeasesScreen(QWidget):
                 str(l["end_date"]) if l["end_date"] else "",
                 f"R{l['rent_amount']:.2f}" if l["rent_amount"] else "",
                 l["status"] or "",
+                request_label,
             ]
             for c, text in enumerate(cells):
-                self.table.setItem(r, c, QTableWidgetItem(text))
+                item = QTableWidgetItem(text)
+                if c == 7 and request_pending:
+                    item.setBackground(warning_bg)
+                    item.setForeground(warning_fg)
+                    reason = l.get("termination_reason") or "(no reason)"
+                    item.setToolTip(f"Reason: {reason}")
+                self.table.setItem(r, c, item)
+
+    def _selected_lease(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+        item = self.table.item(row, 0)
+        if not item:
+            return None
+        lease_id = int(item.text())
+        return self.controller.get(lease_id)
 
     def _selected_lease_id(self):
         row = self.table.currentRow()
@@ -264,7 +312,7 @@ class LeasesScreen(QWidget):
             return
         confirm = QMessageBox.question(
             self, "Terminate lease",
-            f"Terminate lease #{lid}? The property will become Available again.",
+            f"Terminate lease #{lid} directly? The property will become Available again.",
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
@@ -274,5 +322,98 @@ class LeasesScreen(QWidget):
             QMessageBox.information(self, "Success", msg)
             self.refresh()
             self.parent_window.properties_screen.refresh()
+        else:
+            QMessageBox.warning(self, "Error", msg)
+
+    # ---- B4: tenant request
+    def _on_request_termination(self):
+        if not self.is_tenant:
+            return
+        lease = self._selected_lease()
+        if not lease:
+            QMessageBox.information(self, "No selection", "Select one of your leases.")
+            return
+        if lease["status"] != "Active":
+            QMessageBox.warning(self, "Cannot request",
+                                "Only active leases can be terminated.")
+            return
+        if lease["termination_requested"]:
+            QMessageBox.information(self, "Already pending",
+                                    "A termination request is already pending.")
+            return
+
+        dlg = LeaseTerminationDialog(self, lease_data=lease)
+        if dlg.exec():
+            ok, msg = self.controller.request_termination(
+                lease["lease_id"], dlg.get_reason(), self.user_data
+            )
+            if ok:
+                QMessageBox.information(self, "Submitted", msg)
+                self.refresh()
+            else:
+                QMessageBox.warning(self, "Error", msg)
+
+    # ---- B4: manager approve
+    def _on_approve_termination(self):
+        if not self.is_writer:
+            return
+        lease = self._selected_lease()
+        if not lease:
+            QMessageBox.information(self, "No selection", "Select a lease.")
+            return
+        if not lease["termination_requested"]:
+            QMessageBox.information(self, "Nothing to approve",
+                                    "This lease has no pending termination request.")
+            return
+
+        reason = lease.get("termination_reason") or "(no reason given)"
+        confirm = QMessageBox.question(
+            self, "Approve termination",
+            f"Approve termination of lease #{lease['lease_id']}?\n\n"
+            f"Tenant's reason:\n{reason}\n\n"
+            f"The lease will be terminated immediately.",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        ok, msg = self.controller.approve_termination(
+            lease["lease_id"], self.user_data
+        )
+        if ok:
+            QMessageBox.information(self, "Approved", msg)
+            self.refresh()
+            self.parent_window.properties_screen.refresh()
+        else:
+            QMessageBox.warning(self, "Error", msg)
+
+    # ---- B4: manager reject
+    def _on_reject_termination(self):
+        if not self.is_writer:
+            return
+        lease = self._selected_lease()
+        if not lease:
+            QMessageBox.information(self, "No selection", "Select a lease.")
+            return
+        if not lease["termination_requested"]:
+            QMessageBox.information(self, "Nothing to reject",
+                                    "This lease has no pending termination request.")
+            return
+
+        reason = lease.get("termination_reason") or "(no reason given)"
+        confirm = QMessageBox.question(
+            self, "Reject termination",
+            f"Reject the termination request for lease #{lease['lease_id']}?\n\n"
+            f"Tenant's reason:\n{reason}\n\n"
+            f"The lease will remain active.",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        ok, msg = self.controller.reject_termination(
+            lease["lease_id"], self.user_data
+        )
+        if ok:
+            QMessageBox.information(self, "Rejected", msg)
+            self.refresh()
         else:
             QMessageBox.warning(self, "Error", msg)

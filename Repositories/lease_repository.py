@@ -1,4 +1,4 @@
-print(">>> lease_repository.py V1 <<<")
+print(">>> lease_repository.py V2 <<<")
 
 from datetime import date, timedelta
 from Database.connection import get_session
@@ -83,6 +83,8 @@ class LeaseRepository:
                 end_date=end_date,
                 rent_amount=rent_amount,
                 status="Active",
+                termination_requested=False,
+                termination_reason=None,
             )
             db.add(lease)
             db.commit()
@@ -98,6 +100,20 @@ class LeaseRepository:
             if not lease:
                 return False
             lease.status = status
+            db.commit()
+            return True
+        finally:
+            db.close()
+
+    def set_termination_request(self, lease_id: int, requested: bool,
+                                 reason: str | None) -> bool:
+        db = get_session()
+        try:
+            lease = db.query(Lease).filter(Lease.lease_id == lease_id).first()
+            if not lease:
+                return False
+            lease.termination_requested = requested
+            lease.termination_reason = reason
             db.commit()
             return True
         finally:
