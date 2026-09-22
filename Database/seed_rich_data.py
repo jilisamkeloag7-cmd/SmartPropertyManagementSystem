@@ -17,6 +17,7 @@ Usage:
 
 import os
 import re
+from Models.viewing_request import ViewingRequest
 from datetime import date, datetime, timedelta
 from Database.connection import engine, get_session
 from Models.base import Base
@@ -349,6 +350,46 @@ def reset_and_seed():
                                submitted_by=owner1.user_id,
                                description="Pool pump needs replacing before tenant can move in.",
                                priority="High", status="In Progress", created_at=_dt(-10)),
+        ])
+
+        # ============================================================
+        # VIEWING REQUESTS
+        # ============================================================
+        print("[seed] Creating viewing requests...")
+        db.add_all([
+            # Pending — waiting for manager decision
+            ViewingRequest(property_id=p4.property_id, tenant_id=tenant1.user_id,
+                           preferred_date=_d(3), preferred_time="Morning",
+                           message="Interested in the shop front — available to view "
+                                   "any morning this week.",
+                           status="Pending", created_at=_dt(-1)),
+            ViewingRequest(property_id=p6.property_id, tenant_id=tenant2.user_id,
+                           preferred_date=_d(2), preferred_time="Afternoon",
+                           message="Please confirm if the apartment is pet-friendly.",
+                           status="Pending", created_at=_dt(-1, hour=15)),
+
+            # Approved — historical
+            ViewingRequest(property_id=p1.property_id, tenant_id=tenant1.user_id,
+                           preferred_date=_d(-60), preferred_time="Morning",
+                           message="Would like to view before signing.",
+                           status="Approved",
+                           manager_note="Confirmed for 9am. Agent will meet you at the gate.",
+                           created_at=_dt(-62), decided_at=_dt(-61)),
+
+            # Declined — historical
+            ViewingRequest(property_id=p2.property_id, tenant_id=tenant3.user_id,
+                           preferred_date=_d(-30), preferred_time="Evening",
+                           message="Can I view after work hours?",
+                           status="Declined",
+                           manager_note="Property is currently occupied. Please choose a daytime slot.",
+                           created_at=_dt(-32), decided_at=_dt(-31)),
+
+            # Cancelled by tenant — historical
+            ViewingRequest(property_id=p4.property_id, tenant_id=tenant3.user_id,
+                           preferred_date=_d(-15), preferred_time="Morning",
+                           message="Tentatively interested.",
+                           status="Cancelled",
+                           created_at=_dt(-18), decided_at=_dt(-17)),
         ])
 
         # ============================================================

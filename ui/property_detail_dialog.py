@@ -1,4 +1,4 @@
-print(">>> property_detail_dialog.py V2 <<<")
+print(">>> property_detail_dialog.py V3 <<<")
 
 import os
 from PySide6.QtWidgets import (
@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from Controllers.property_controller import PropertyController
 from Controllers.review_controller import ReviewController
+from Controllers.viewing_controller import ViewingController
 from ui import theme
 
 
@@ -24,6 +25,7 @@ class PropertyDetailDialog(QDialog):
         self.session_user = session_user or {}
         self.controller = PropertyController()
         self.review_controller = ReviewController()
+        self.viewing_controller = ViewingController()
         self.images = []
         self.current_index = 0
 
@@ -35,7 +37,7 @@ class PropertyDetailDialog(QDialog):
                 self.images = []
 
         self.setWindowTitle(self.property_data.get("address", "Property"))
-        self.setFixedSize(720, 780)
+        self.setFixedSize(720, 820)
         self.setStyleSheet(f"""
             QDialog {{ background: {theme.BG_APP}; }}
             QLabel {{ color: {theme.TEXT_MAIN}; }}
@@ -49,7 +51,6 @@ class PropertyDetailDialog(QDialog):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Scrollable content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -63,14 +64,33 @@ class PropertyDetailDialog(QDialog):
         layout.setContentsMargins(24, 22, 24, 22)
         layout.setSpacing(14)
 
-        # ---- Title
+        # ---- Title row + Request Viewing
+        title_row = QHBoxLayout()
+
         addr = QLabel(self.property_data.get("address", "Property"))
         addr.setStyleSheet(
             f"font-size: {theme.FS_XL}px; font-weight: bold; "
             f"color: {theme.TEXT_MAIN};"
         )
         addr.setWordWrap(True)
-        layout.addWidget(addr)
+        title_row.addWidget(addr, stretch=1)
+
+        # Request Viewing button — tenant only, viewable property only
+        role = self.session_user.get("role", "")
+        status = self.property_data.get("status", "")
+        show_viewing_btn = (
+            role == "Tenant" and status in ("Available", "Under Maintenance")
+        )
+
+        self.btn_request_viewing = QPushButton("📅  Request Viewing")
+        self.btn_request_viewing.setCursor(Qt.PointingHandCursor)
+        self.btn_request_viewing.setFixedHeight(38)
+        self.btn_request_viewing.setStyleSheet(theme.button_qss("primary"))
+        self.btn_request_viewing.clicked.connect(self._on_request_viewing)
+        self.btn_request_viewing.setVisible(show_viewing_btn)
+        title_row.addWidget(self.btn_request_viewing)
+
+        layout.addLayout(title_row)
 
         # ---- Image area
         img_frame = QFrame()
@@ -177,7 +197,6 @@ class PropertyDetailDialog(QDialog):
 
         layout.addLayout(reviews_header)
 
-        # Scroll area for reviews
         self.reviews_container = QWidget()
         self.reviews_container.setStyleSheet("background: transparent;")
         self.reviews_layout = QVBoxLayout(self.reviews_container)
@@ -187,7 +206,6 @@ class PropertyDetailDialog(QDialog):
 
         layout.addStretch()
 
-        # Footer
         footer = QHBoxLayout()
         footer.addStretch()
         btn_close = QPushButton("Close")
@@ -243,9 +261,28 @@ class PropertyDetailDialog(QDialog):
         self.current_index = (self.current_index + 1) % len(self.images)
         self._render_image()
 
+    # ------------------------------------------------------------------ viewing
+    def _on_request_viewing(self):
+        from ui.viewing_request_dialog import ViewingRequestDialog
+        dlg = ViewingRequestDialog(self, property_data=self.property_data)
+        if dlg.exec():
+            data = dlg.get_data()
+            ok, msg = self.viewing_controller.request(
+                self.property_data.get("property_id"),
+                data["preferred_date"],
+                data["preferred_time"],
+                data["message"],
+                self.session_user,
+            )
+            if ok:
+                QMessageBox.information(self, "Submitted", msg)
+                self.btn_request_viewing.setEnabled(False)
+                self.btn_request_viewing.setText("✓ Viewing Requested")
+            else:
+                QMessageBox.warning(self, "Error", msg)
+
     # ------------------------------------------------------------------ reviews
     def _load_reviews(self):
-        # Clear existing review cards
         while self.reviews_layout.count():
             item = self.reviews_layout.takeAt(0)
             w = item.widget()
@@ -262,16 +299,12 @@ class PropertyDetailDialog(QDialog):
         except Exception:
             reviews, avg, count = [], None, 0
 
-        # Header
         if avg is not None and count > 0:
             stars = "★" * int(round(avg)) + "☆" * (5 - int(round(avg)))
-            self.reviews_title.setText(
-                f"Reviews   {stars}   {avg} ({count})"
-            )
+            self.reviews_title.setText(f"Reviews   {stars}   {avg} ({count})")
         else:
             self.reviews_title.setText("Reviews")
 
-        # Show/hide write button based on role
         role = self.session_user.get("role", "")
         can_write = role == "Tenant"
         self.btn_write_review.setVisible(can_write)
@@ -302,7 +335,6 @@ class PropertyDetailDialog(QDialog):
         inner.setContentsMargins(14, 10, 14, 10)
         inner.setSpacing(4)
 
-        # Header row: stars + reviewer + date
         header = QHBoxLayout()
         rating = r.get("rating", 0)
         stars = "★" * rating + "☆" * (5 - rating)
@@ -319,7 +351,6 @@ class PropertyDetailDialog(QDialog):
             f"font-weight: bold; padding-left: 8px;"
         )
         header.addWidget(name_lbl)
-
         header.addStretch()
 
         date_lbl = QLabel(str(r.get("created_at", ""))[:10])
@@ -328,7 +359,6 @@ class PropertyDetailDialog(QDialog):
         )
         header.addWidget(date_lbl)
 
-        # Admin delete button
         role = self.session_user.get("role", "")
         if role in ("Administrator", "Property Manager"):
             del_btn = QPushButton("✕")
@@ -351,7 +381,6 @@ class PropertyDetailDialog(QDialog):
 
         inner.addLayout(header)
 
-        # Comment
         comment = r.get("comment") or "(no comment)"
         comment_lbl = QLabel(comment)
         comment_lbl.setWordWrap(True)

@@ -1,4 +1,4 @@
-print(">>> sidebar.py V2 <<<")
+print(">>> sidebar.py V3 <<<")
 
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QWidget, QMessageBox)
@@ -12,6 +12,7 @@ SIDEBAR_W = 220
 NAV_ITEMS = [
     ("🏠", "Dashboard",    "dashboard",    None),
     ("🏘",  "Properties",  "properties",   None),
+    ("📅", "Viewings",     "viewings",     {"Administrator", "Property Manager", "Tenant"}),
     ("📄", "Leases",       "leases",       None),
     ("💰", "Payments",     "payments",     None),
     ("🔧", "Maintenance",  "maintenance",  None),
@@ -31,11 +32,9 @@ class Sidebar(QFrame):
         self._active_key = "dashboard"
         self._build()
 
-    # ------------------------------------------------------------------ API
     def set_user(self, user_data: dict):
         self.user_data = user_data or {}
         self._rebuild_nav_items()
-
         name = self.user_data.get("name", "User")
         role = self.user_data.get("role", "")
         self.user_name.setText(name)
@@ -46,7 +45,6 @@ class Sidebar(QFrame):
         for key, btn in self._buttons.items():
             btn.setStyleSheet(self._nav_btn_qss(active=(key == screen_key)))
 
-    # ------------------------------------------------------------------ UI
     def _build(self):
         self.setFixedWidth(SIDEBAR_W)
         self.setStyleSheet(f"""
@@ -60,7 +58,6 @@ class Sidebar(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # ---- Logo
         logo_wrap = QWidget()
         logo_wrap.setStyleSheet("background: transparent;")
         logo_layout = QHBoxLayout(logo_wrap)
@@ -78,7 +75,6 @@ class Sidebar(QFrame):
         )
         logo_layout.addWidget(logo_text)
         logo_layout.addStretch()
-
         layout.addWidget(logo_wrap)
 
         div = QFrame()
@@ -86,7 +82,6 @@ class Sidebar(QFrame):
         div.setStyleSheet(f"background: {theme.BORDER};")
         layout.addWidget(div)
 
-        # ---- Nav items container
         self.nav_container = QWidget()
         self.nav_container.setStyleSheet("background: transparent;")
         self.nav_layout = QVBoxLayout(self.nav_container)
@@ -97,7 +92,6 @@ class Sidebar(QFrame):
 
         layout.addStretch()
 
-        # ---- Theme toggle
         toggle_wrap = QWidget()
         toggle_wrap.setStyleSheet("background: transparent;")
         toggle_layout = QVBoxLayout(toggle_wrap)
@@ -129,7 +123,6 @@ class Sidebar(QFrame):
         div2.setStyleSheet(f"background: {theme.BORDER};")
         layout.addWidget(div2)
 
-        # ---- User info + logout
         footer = QWidget()
         footer.setStyleSheet("background: transparent;")
         footer_layout = QVBoxLayout(footer)
@@ -160,7 +153,6 @@ class Sidebar(QFrame):
 
         layout.addWidget(footer)
 
-    # ------------------------------------------------------------------ nav
     def _rebuild_nav_items(self):
         while self.nav_layout.count() > 1:
             item = self.nav_layout.takeAt(0)
@@ -228,7 +220,6 @@ class Sidebar(QFrame):
         if self.on_logout:
             self.on_logout()
 
-    # ------------------------------------------------------------------ theme
     def _theme_button_label(self):
         if theme.MODE == "dark":
             return "☀  Light Mode"
@@ -237,8 +228,7 @@ class Sidebar(QFrame):
     def _on_toggle_theme(self):
         new = theme.toggle_mode()
         QMessageBox.information(
-            self,
-            "Theme changed",
+            self, "Theme changed",
             f"Theme set to {new}.\n\nPlease close and reopen the application "
             f"to apply the new theme."
         )
