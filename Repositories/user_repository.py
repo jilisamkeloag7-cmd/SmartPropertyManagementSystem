@@ -1,4 +1,4 @@
-print(">>> user_repository.py V3 <<<")
+print(">>> user_repository.py V4 <<<")
 
 from sqlalchemy import func
 from Database.connection import get_session
@@ -6,9 +6,7 @@ from Models.user import User, UserRole
 
 
 class UserRepository:
-    # ------------------------------------------------------------------ reads
     def find_by_email(self, email: str):
-        """Case-insensitive email lookup."""
         if not email:
             return None
         db = get_session()
@@ -36,11 +34,6 @@ class UserRepository:
             db.close()
 
     def find_by_login(self, identifier: str):
-        """
-        Login accepts email OR ID number.
-        Email comparison is CASE-INSENSITIVE.
-        ID number comparison is exact (digits only).
-        """
         if not identifier:
             return None
         identifier = identifier.strip()
@@ -84,11 +77,9 @@ class UserRepository:
         finally:
             db.close()
 
-    # ------------------------------------------------------------------ writes
     def create(self, user: User) -> User:
         db = get_session()
         try:
-            # Normalise email to lowercase on store so future lookups are simple
             user.email = (user.email or "").strip().lower()
             db.add(user)
             db.commit()
@@ -127,6 +118,20 @@ class UserRepository:
         finally:
             db.close()
 
+    def update_security_answer(self, user_id: int, question: str, answer_hash: str) -> bool:
+        """Set/update the security question + hashed answer."""
+        db = get_session()
+        try:
+            user = db.query(User).filter(User.user_id == user_id).first()
+            if not user:
+                return False
+            user.security_question = question
+            user.security_answer_hash = answer_hash
+            db.commit()
+            return True
+        finally:
+            db.close()
+
     def deactivate(self, user_id: int) -> bool:
         db = get_session()
         try:
@@ -152,7 +157,6 @@ class UserRepository:
             db.close()
 
     def has_active_links(self, user_id: int) -> bool:
-        """True if the user has leases, ownerships or maintenance records."""
         from Models.lease import Lease
         from Models.ownership import Ownership
         from Models.maintenance import MaintenanceRequest

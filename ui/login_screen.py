@@ -1,4 +1,4 @@
-print(">>> login_screen.py V5 <<<")
+print(">>> login_screen.py V6 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                 QLineEdit, QPushButton, QFrame, QScrollArea)
@@ -63,8 +63,7 @@ class LoginScreen(QWidget):
         self.role_label = QLabel("Sign in as User")
         self.role_label.setAlignment(Qt.AlignCenter)
         self.role_label.setStyleSheet(
-            f"font-size: {theme.FS_2XL}px; "
-            f"font-weight: bold; "
+            f"font-size: {theme.FS_2XL}px; font-weight: bold; "
             f"color: {theme.TEXT_MAIN};"
         )
         layout.addWidget(self.role_label)
@@ -81,8 +80,8 @@ class LoginScreen(QWidget):
             }}
         """)
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(36, 36, 36, 36)
-        card_layout.setSpacing(16)
+        card_layout.setContentsMargins(36, 32, 36, 32)
+        card_layout.setSpacing(14)
 
         card_layout.addWidget(self._field_label("Email or ID Number"))
 
@@ -93,7 +92,7 @@ class LoginScreen(QWidget):
         self.email_input.returnPressed.connect(self.handle_login)
         card_layout.addWidget(self.email_input)
 
-        card_layout.addSpacing(4)
+        card_layout.addSpacing(2)
 
         pwd_label_row = QHBoxLayout()
         pwd_label_row.addWidget(self._field_label("Password"))
@@ -137,7 +136,7 @@ class LoginScreen(QWidget):
         self.error_label.setMinimumHeight(30)
         card_layout.addWidget(self.error_label)
 
-        card_layout.addSpacing(6)
+        card_layout.addSpacing(4)
 
         self.btn_signin = QPushButton("Sign In")
         self.btn_signin.setCursor(Qt.PointingHandCursor)
@@ -159,21 +158,24 @@ class LoginScreen(QWidget):
         self.btn_signin.clicked.connect(self.handle_login)
         card_layout.addWidget(self.btn_signin)
 
+        # ---- Links row (Register | Forgot Password)
+        links_row = QHBoxLayout()
+        links_row.setSpacing(8)
+
+        btn_register = QPushButton("Create Account")
+        btn_register.setCursor(Qt.PointingHandCursor)
+        btn_register.setStyleSheet(self._link_qss())
+        btn_register.clicked.connect(self._on_register)
+        links_row.addWidget(btn_register)
+        links_row.addStretch()
+
         btn_forgot = QPushButton("Forgot password?")
         btn_forgot.setCursor(Qt.PointingHandCursor)
-        btn_forgot.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                color: {theme.TEXT_MUTED};
-                border: none;
-                font-size: {theme.FS_SM}px;
-                padding: 4px 8px;
-            }}
-            QPushButton:hover {{
-                color: {theme.PRIMARY};
-            }}
-        """)
-        card_layout.addWidget(btn_forgot, alignment=Qt.AlignCenter)
+        btn_forgot.setStyleSheet(self._link_qss())
+        btn_forgot.clicked.connect(self._on_forgot_password)
+        links_row.addWidget(btn_forgot)
+
+        card_layout.addLayout(links_row)
 
         layout.addWidget(card, alignment=Qt.AlignCenter)
 
@@ -193,9 +195,7 @@ class LoginScreen(QWidget):
                 font-size: {theme.FS_BASE}px;
                 padding: 4px 12px;
             }}
-            QPushButton:hover {{
-                color: {theme.PRIMARY};
-            }}
+            QPushButton:hover {{ color: {theme.PRIMARY}; }}
         """)
         btn_back.clicked.connect(self._go_back)
         back_row.addWidget(btn_back)
@@ -208,8 +208,7 @@ class LoginScreen(QWidget):
         lbl = QLabel(text)
         lbl.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; "
-            f"font-size: {theme.FS_SM}px; "
-            f"font-weight: bold;"
+            f"font-size: {theme.FS_SM}px; font-weight: bold;"
         )
         return lbl
 
@@ -224,8 +223,22 @@ class LoginScreen(QWidget):
                 color: {theme.TEXT_MAIN};
                 background: {theme.BG_SUBTLE};
             }}
-            QLineEdit:focus {{
-                border-color: {theme.PRIMARY};
+            QLineEdit:focus {{ border-color: {theme.PRIMARY}; }}
+        """
+
+    @staticmethod
+    def _link_qss():
+        return f"""
+            QPushButton {{
+                background: transparent;
+                color: {theme.TEXT_MUTED};
+                border: none;
+                font-size: {theme.FS_SM}px;
+                padding: 4px 6px;
+            }}
+            QPushButton:hover {{
+                color: {theme.PRIMARY};
+                text-decoration: underline;
             }}
         """
 
@@ -241,9 +254,48 @@ class LoginScreen(QWidget):
         self.clear_fields()
         self.parent_window._set_screen("user_type")
 
+    def _on_register(self):
+        from ui.register_dialog import RegisterDialog
+        dlg = RegisterDialog(self)
+        if dlg.exec():
+            data = dlg.get_data()
+            ok, msg = self.auth.register_self(
+                data["id_number"], data["name"], data["email"],
+                data["phone"], data["password"], data["role_str"],
+                data["security_question"], data["security_answer"],
+            )
+            if ok:
+                self.error_label.setStyleSheet(
+                    f"color: {theme.SUCCESS_HOVER}; font-size: {theme.FS_SM}px;"
+                )
+                self.error_label.setText(
+                    f"{msg} You can now sign in below."
+                )
+                # Pre-fill email for convenience
+                self.email_input.setText(data["email"])
+                self.password_input.setFocus()
+            else:
+                self.error_label.setStyleSheet(
+                    f"color: {theme.DANGER}; font-size: {theme.FS_SM}px;"
+                )
+                self.error_label.setText(msg)
+
+    def _on_forgot_password(self):
+        from ui.forgot_password_dialog import ForgotPasswordDialog
+        prefill = self.email_input.text().strip()
+        dlg = ForgotPasswordDialog(self, prefill_email=prefill)
+        if dlg.exec():
+            self.error_label.setStyleSheet(
+                f"color: {theme.SUCCESS_HOVER}; font-size: {theme.FS_SM}px;"
+            )
+            self.error_label.setText("Password updated. Please sign in.")
+
     def handle_login(self):
         identifier = self.email_input.text().strip()
         password   = self.password_input.text()
+        self.error_label.setStyleSheet(
+            f"color: {theme.DANGER}; font-size: {theme.FS_SM}px;"
+        )
         self.error_label.setText("")
 
         ok, user, err = self.auth.login(identifier, password, self.current_role)

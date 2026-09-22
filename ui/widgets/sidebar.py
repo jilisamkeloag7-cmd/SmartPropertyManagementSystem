@@ -1,4 +1,4 @@
-print(">>> sidebar.py V3 <<<")
+print(">>> sidebar.py V5 <<<")
 
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QWidget, QMessageBox)
@@ -10,35 +10,49 @@ SIDEBAR_W = 220
 
 
 NAV_ITEMS = [
-    ("🏠", "Dashboard",    "dashboard",    None),
-    ("🏘",  "Properties",  "properties",   None),
-    ("📅", "Viewings",     "viewings",     {"Administrator", "Property Manager", "Tenant"}),
-    ("📄", "Leases",       "leases",       None),
-    ("💰", "Payments",     "payments",     None),
-    ("🔧", "Maintenance",  "maintenance",  None),
-    ("🔑", "Ownership",    "ownerships",   {"Administrator", "Property Manager", "Owner"}),
-    ("📊", "Reports",      "reports",      {"Administrator", "Property Manager"}),
-    ("👥", "Users",        "users",        {"Administrator"}),
+    ("🏠", "Dashboard",     "dashboard",    None),
+    ("🏘",  "Properties",   "properties",   None),
+    ("📅", "Viewings",      "viewings",     {"Administrator", "Property Manager", "Tenant"}),
+    ("📝", "Applications",  "applications", {"Administrator", "Property Manager", "Tenant"}),
+    ("📄", "Leases",        "leases",       None),
+    ("💰", "Payments",      "payments",     None),
+    ("🔧", "Maintenance",   "maintenance",  None),
+    ("🔑", "Ownership",     "ownerships",   {"Administrator", "Property Manager", "Owner"}),
+    ("📊", "Reports",       "reports",      {"Administrator", "Property Manager", "Owner"}),
+    ("👥", "Users",         "users",        {"Administrator"}),
+]
+
+# For guests — only Properties
+GUEST_NAV_ITEMS = [
+    ("🏘",  "Browse Properties", "properties", None),
 ]
 
 
 class Sidebar(QFrame):
-    def __init__(self, parent=None, on_navigate=None, on_logout=None):
+    def __init__(self, parent=None, on_navigate=None, on_logout=None,
+                 on_sign_in=None):
         super().__init__(parent)
         self.on_navigate = on_navigate
         self.on_logout = on_logout
+        self.on_sign_in = on_sign_in
         self.user_data = None
+        self.is_guest = False
         self._buttons = {}
         self._active_key = "dashboard"
         self._build()
 
     def set_user(self, user_data: dict):
         self.user_data = user_data or {}
+        self.is_guest = self.user_data.get("role") == "Guest"
         self._rebuild_nav_items()
         name = self.user_data.get("name", "User")
         role = self.user_data.get("role", "")
         self.user_name.setText(name)
         self.user_role.setText(role)
+
+        # Swap footer action based on guest vs authenticated
+        self.btn_logout.setVisible(not self.is_guest)
+        self.btn_sign_in.setVisible(self.is_guest)
 
     def set_active(self, screen_key: str):
         self._active_key = screen_key
@@ -144,12 +158,20 @@ class Sidebar(QFrame):
 
         footer_layout.addSpacing(10)
 
-        btn_logout = QPushButton("Logout")
-        btn_logout.setCursor(Qt.PointingHandCursor)
-        btn_logout.setFixedHeight(34)
-        btn_logout.setStyleSheet(theme.button_qss("danger"))
-        btn_logout.clicked.connect(self._handle_logout)
-        footer_layout.addWidget(btn_logout)
+        self.btn_logout = QPushButton("Logout")
+        self.btn_logout.setCursor(Qt.PointingHandCursor)
+        self.btn_logout.setFixedHeight(34)
+        self.btn_logout.setStyleSheet(theme.button_qss("danger"))
+        self.btn_logout.clicked.connect(self._handle_logout)
+        footer_layout.addWidget(self.btn_logout)
+
+        self.btn_sign_in = QPushButton("Sign In")
+        self.btn_sign_in.setCursor(Qt.PointingHandCursor)
+        self.btn_sign_in.setFixedHeight(34)
+        self.btn_sign_in.setStyleSheet(theme.button_qss("primary"))
+        self.btn_sign_in.clicked.connect(self._handle_sign_in)
+        self.btn_sign_in.setVisible(False)
+        footer_layout.addWidget(self.btn_sign_in)
 
         layout.addWidget(footer)
 
@@ -163,7 +185,9 @@ class Sidebar(QFrame):
 
         role = (self.user_data or {}).get("role", "")
 
-        for icon, label, key, allowed in NAV_ITEMS:
+        items = GUEST_NAV_ITEMS if self.is_guest else NAV_ITEMS
+
+        for icon, label, key, allowed in items:
             if allowed is not None and role not in allowed:
                 continue
             btn = self._make_nav_button(icon, label, key)
@@ -219,6 +243,10 @@ class Sidebar(QFrame):
     def _handle_logout(self):
         if self.on_logout:
             self.on_logout()
+
+    def _handle_sign_in(self):
+        if self.on_sign_in:
+            self.on_sign_in()
 
     def _theme_button_label(self):
         if theme.MODE == "dark":

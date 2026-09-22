@@ -1,4 +1,4 @@
-print(">>> property_detail_dialog.py V3 <<<")
+print(">>> property_detail_dialog.py V5 <<<")
 
 import os
 from PySide6.QtWidgets import (
@@ -10,6 +10,7 @@ from PySide6.QtGui import QPixmap
 from Controllers.property_controller import PropertyController
 from Controllers.review_controller import ReviewController
 from Controllers.viewing_controller import ViewingController
+from Controllers.lease_application_controller import LeaseApplicationController
 from ui import theme
 
 
@@ -23,9 +24,12 @@ class PropertyDetailDialog(QDialog):
         super().__init__(parent)
         self.property_data = property_data or {}
         self.session_user = session_user or {}
+        self.role = self.session_user.get("role", "")
+        self.is_guest = self.role == "Guest"
         self.controller = PropertyController()
         self.review_controller = ReviewController()
         self.viewing_controller = ViewingController()
+        self.application_controller = LeaseApplicationController()
         self.images = []
         self.current_index = 0
 
@@ -37,7 +41,7 @@ class PropertyDetailDialog(QDialog):
                 self.images = []
 
         self.setWindowTitle(self.property_data.get("address", "Property"))
-        self.setFixedSize(720, 820)
+        self.setFixedSize(720, 860)
         self.setStyleSheet(f"""
             QDialog {{ background: {theme.BG_APP}; }}
             QLabel {{ color: {theme.TEXT_MAIN}; }}
@@ -64,33 +68,64 @@ class PropertyDetailDialog(QDialog):
         layout.setContentsMargins(24, 22, 24, 22)
         layout.setSpacing(14)
 
-        # ---- Title row + Request Viewing
-        title_row = QHBoxLayout()
-
+        # ---- Title
         addr = QLabel(self.property_data.get("address", "Property"))
         addr.setStyleSheet(
             f"font-size: {theme.FS_XL}px; font-weight: bold; "
             f"color: {theme.TEXT_MAIN};"
         )
         addr.setWordWrap(True)
-        title_row.addWidget(addr, stretch=1)
+        layout.addWidget(addr)
 
-        # Request Viewing button — tenant only, viewable property only
-        role = self.session_user.get("role", "")
+        # ---- Guest banner
+        if self.is_guest:
+            banner = QLabel(
+                "ℹ  You're browsing as a guest. Sign in to request viewings, "
+                "apply for leases, or leave reviews."
+            )
+            banner.setWordWrap(True)
+            banner.setStyleSheet(f"""
+                color: {theme.INFO};
+                background: {theme.INFO_SOFT};
+                padding: 10px 12px;
+                border-radius: {theme.RADIUS_SM}px;
+                font-size: {theme.FS_SM}px;
+            """)
+            layout.addWidget(banner)
+
+        # ---- Action buttons
         status = self.property_data.get("status", "")
-        show_viewing_btn = (
-            role == "Tenant" and status in ("Available", "Under Maintenance")
-        )
+        is_available = status == "Available"
+        is_viewable = status in ("Available", "Under Maintenance")
+        is_tenant = self.role == "Tenant"
+
+        action_row = QHBoxLayout()
+        action_row.setSpacing(8)
+        action_row.addStretch()
 
         self.btn_request_viewing = QPushButton("📅  Request Viewing")
         self.btn_request_viewing.setCursor(Qt.PointingHandCursor)
         self.btn_request_viewing.setFixedHeight(38)
-        self.btn_request_viewing.setStyleSheet(theme.button_qss("primary"))
+        self.btn_request_viewing.setStyleSheet(theme.button_qss("secondary"))
         self.btn_request_viewing.clicked.connect(self._on_request_viewing)
-        self.btn_request_viewing.setVisible(show_viewing_btn)
-        title_row.addWidget(self.btn_request_viewing)
+        self.btn_request_viewing.setVisible((is_tenant or self.is_guest) and is_viewable)
+        if self.is_guest:
+            self.btn_request_viewing.setEnabled(False)
+            self.btn_request_viewing.setToolTip("Sign in to request a viewing")
+        action_row.addWidget(self.btn_request_viewing)
 
-        layout.addLayout(title_row)
+        self.btn_apply = QPushButton("📝  Apply for Lease")
+        self.btn_apply.setCursor(Qt.PointingHandCursor)
+        self.btn_apply.setFixedHeight(38)
+        self.btn_apply.setStyleSheet(theme.button_qss("primary"))
+        self.btn_apply.clicked.connect(self._on_apply)
+        self.btn_apply.setVisible((is_tenant or self.is_guest) and is_available)
+        if self.is_guest:
+            self.btn_apply.setEnabled(False)
+            self.btn_apply.setToolTip("Sign in to apply")
+        action_row.addWidget(self.btn_apply)
+
+        layout.addLayout(action_row)
 
         # ---- Image area
         img_frame = QFrame()
@@ -115,7 +150,6 @@ class PropertyDetailDialog(QDialog):
         img_layout.addWidget(self.image_label)
         layout.addWidget(img_frame)
 
-        # ---- Image nav
         nav = QHBoxLayout()
         nav.addStretch()
 
@@ -143,7 +177,7 @@ class PropertyDetailDialog(QDialog):
         nav.addStretch()
         layout.addLayout(nav)
 
-        # ---- Details card
+        # ---- Details
         details_frame = QFrame()
         details_frame.setStyleSheet(theme.card_qss())
         details_layout = QVBoxLayout(details_frame)
@@ -177,7 +211,7 @@ class PropertyDetailDialog(QDialog):
 
         layout.addWidget(details_frame)
 
-        # ---- Reviews section
+        # ---- Reviews
         reviews_header = QHBoxLayout()
 
         self.reviews_title = QLabel("Reviews")
@@ -218,7 +252,6 @@ class PropertyDetailDialog(QDialog):
 
         outer.addWidget(scroll)
 
-    # ------------------------------------------------------------------ image gallery
     def _render_image(self):
         total = len(self.images)
         if total == 0:
@@ -228,23 +261,19 @@ class PropertyDetailDialog(QDialog):
             self.btn_prev.setEnabled(False)
             self.btn_next.setEnabled(False)
             return
-
         img = self.images[self.current_index]
         path = img.get("full_path")
         if path and os.path.isfile(path):
             pix = QPixmap(path)
             if not pix.isNull():
-                scaled = pix.scaled(
-                    IMAGE_W, IMAGE_H - 16, Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation,
-                )
+                scaled = pix.scaled(IMAGE_W, IMAGE_H - 16,
+                                    Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 self.image_label.setPixmap(scaled)
                 self.image_label.setText("")
             else:
                 self.image_label.setText("🖼")
         else:
             self.image_label.setText("🖼")
-
         self.counter.setText(f"{self.current_index + 1} / {total}")
         self.btn_prev.setEnabled(total > 1)
         self.btn_next.setEnabled(total > 1)
@@ -261,7 +290,7 @@ class PropertyDetailDialog(QDialog):
         self.current_index = (self.current_index + 1) % len(self.images)
         self._render_image()
 
-    # ------------------------------------------------------------------ viewing
+    # ------------------------------------------------------------------ actions
     def _on_request_viewing(self):
         from ui.viewing_request_dialog import ViewingRequestDialog
         dlg = ViewingRequestDialog(self, property_data=self.property_data)
@@ -269,15 +298,30 @@ class PropertyDetailDialog(QDialog):
             data = dlg.get_data()
             ok, msg = self.viewing_controller.request(
                 self.property_data.get("property_id"),
-                data["preferred_date"],
-                data["preferred_time"],
-                data["message"],
-                self.session_user,
+                data["preferred_date"], data["preferred_time"],
+                data["message"], self.session_user,
             )
             if ok:
                 QMessageBox.information(self, "Submitted", msg)
                 self.btn_request_viewing.setEnabled(False)
                 self.btn_request_viewing.setText("✓ Viewing Requested")
+            else:
+                QMessageBox.warning(self, "Error", msg)
+
+    def _on_apply(self):
+        from ui.lease_application_dialog import LeaseApplicationDialog
+        dlg = LeaseApplicationDialog(self, property_data=self.property_data)
+        if dlg.exec():
+            data = dlg.get_data()
+            ok, msg = self.application_controller.apply(
+                self.property_data.get("property_id"),
+                data["preferred_start"], data["duration_months"],
+                data["message"], self.session_user,
+            )
+            if ok:
+                QMessageBox.information(self, "Submitted", msg)
+                self.btn_apply.setEnabled(False)
+                self.btn_apply.setText("✓ Application Submitted")
             else:
                 QMessageBox.warning(self, "Error", msg)
 
@@ -305,12 +349,11 @@ class PropertyDetailDialog(QDialog):
         else:
             self.reviews_title.setText("Reviews")
 
-        role = self.session_user.get("role", "")
-        can_write = role == "Tenant"
+        can_write = self.role == "Tenant"
         self.btn_write_review.setVisible(can_write)
 
         if not reviews:
-            empty = QLabel("No reviews yet. Be the first!")
+            empty = QLabel("No reviews yet.")
             empty.setStyleSheet(
                 f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_BASE}px; "
                 f"font-style: italic; padding: 8px;"
@@ -330,7 +373,6 @@ class PropertyDetailDialog(QDialog):
                 border-radius: {theme.RADIUS_MD}px;
             }}
         """)
-
         inner = QVBoxLayout(card)
         inner.setContentsMargins(14, 10, 14, 10)
         inner.setSpacing(4)
@@ -359,8 +401,7 @@ class PropertyDetailDialog(QDialog):
         )
         header.addWidget(date_lbl)
 
-        role = self.session_user.get("role", "")
-        if role in ("Administrator", "Property Manager"):
+        if self.role in ("Administrator", "Property Manager"):
             del_btn = QPushButton("✕")
             del_btn.setCursor(Qt.PointingHandCursor)
             del_btn.setFixedSize(24, 24)

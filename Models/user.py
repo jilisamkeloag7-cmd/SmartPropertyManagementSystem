@@ -1,14 +1,18 @@
+print(">>> user.py V3 <<<")
+
 from sqlalchemy import Column, Integer, String, DateTime, Enum
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
 from Models.base import Base
 
+
 class UserRole(str, enum.Enum):
     ADMIN = "Administrator"
     MANAGER = "Property Manager"
     OWNER = "Owner"
     TENANT = "Tenant"
+
 
 class User(Base):
     __tablename__ = "users"
@@ -23,7 +27,10 @@ class User(Base):
     status        = Column(String(20), default="Active")
     created_at    = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
+    # ---- Security question (for forgot-password recovery)
+    security_question    = Column(String(200), nullable=True)
+    security_answer_hash = Column(String(255), nullable=True)
+
     ownerships      = relationship("Ownership", back_populates="owner", cascade="all, delete-orphan")
     leases          = relationship("Lease", back_populates="tenant", cascade="all, delete-orphan")
     notifications   = relationship("Notification", back_populates="user", cascade="all, delete-orphan")

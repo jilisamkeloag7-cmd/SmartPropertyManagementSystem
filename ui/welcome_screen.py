@@ -1,4 +1,4 @@
-print(">>> welcome_screen.py V3 <<<")
+print(">>> welcome_screen.py V4 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                 QLabel, QPushButton)
@@ -14,7 +14,6 @@ class WelcomeScreen(QWidget):
         self._build()
 
     def _build(self):
-        # Mode-aware gradient
         self.setAutoFillBackground(True)
         pal = self.palette()
         grad = QLinearGradient(0, 0, 0, 1)
@@ -39,8 +38,7 @@ class WelcomeScreen(QWidget):
         title = QLabel("Smart Property Management")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
-            f"font-size: {theme.FS_3XL}px; "
-            f"font-weight: bold; "
+            f"font-size: {theme.FS_3XL}px; font-weight: bold; "
             f"color: {theme.TEXT_MAIN};"
         )
         layout.addWidget(title)
@@ -50,13 +48,13 @@ class WelcomeScreen(QWidget):
         subtitle = QLabel("Streamline your property operations with ease")
         subtitle.setAlignment(Qt.AlignCenter)
         subtitle.setStyleSheet(
-            f"font-size: {theme.FS_LG}px; "
-            f"color: {theme.TEXT_MUTED};"
+            f"font-size: {theme.FS_LG}px; color: {theme.TEXT_MUTED};"
         )
         layout.addWidget(subtitle)
 
         layout.addSpacing(theme.SP_10)
 
+        # Primary CTA
         btn = QPushButton("Get Started")
         btn.setCursor(Qt.PointingHandCursor)
         btn.setFixedSize(240, 56)
@@ -81,7 +79,34 @@ class WelcomeScreen(QWidget):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        layout.addSpacing(theme.SP_10)
+        layout.addSpacing(theme.SP_4)
+
+        # Guest CTA
+        btn_guest = QPushButton("Continue as Guest  →")
+        btn_guest.setCursor(Qt.PointingHandCursor)
+        btn_guest.setFixedHeight(36)
+        btn_guest.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {theme.TEXT_MUTED};
+                border: none;
+                font-size: {theme.FS_BASE}px;
+                padding: 4px 20px;
+            }}
+            QPushButton:hover {{
+                color: {theme.PRIMARY};
+                text-decoration: underline;
+            }}
+        """)
+        btn_guest.clicked.connect(self._on_guest)
+
+        guest_row = QHBoxLayout()
+        guest_row.addStretch()
+        guest_row.addWidget(btn_guest)
+        guest_row.addStretch()
+        layout.addLayout(guest_row)
+
+        layout.addSpacing(theme.SP_8)
 
         hint = QLabel("Version 0.1  •  ENEL2SEH1 Group Project")
         hint.setAlignment(Qt.AlignCenter)
@@ -92,3 +117,6 @@ class WelcomeScreen(QWidget):
 
     def _on_start(self):
         self.parent_window.show_user_type()
+
+    def _on_guest(self):
+        self.parent_window.show_guest_browse()

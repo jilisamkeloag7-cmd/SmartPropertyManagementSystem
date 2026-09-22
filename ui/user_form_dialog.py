@@ -1,4 +1,4 @@
-print(">>> user_form_dialog.py V2 <<<")
+print(">>> user_form_dialog.py V3 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
@@ -11,6 +11,15 @@ from ui import theme
 ROLES = ["Administrator", "Property Manager", "Owner", "Tenant"]
 STATUSES = ["Active", "Inactive"]
 
+SECURITY_QUESTIONS = [
+    "(not set)",
+    "What city were you born in?",
+    "What is your mother's maiden name?",
+    "What was the name of your first pet?",
+    "What was the model of your first car?",
+    "What was the name of your first school?",
+]
+
 
 class UserFormDialog(QDialog):
     def __init__(self, parent=None, user_data: dict | None = None):
@@ -18,7 +27,7 @@ class UserFormDialog(QDialog):
         self.user_data = user_data or {}
         self.is_edit = bool(user_data and user_data.get("user_id"))
         self.setWindowTitle("Edit User" if self.is_edit else "Add User")
-        self.setFixedSize(500, 560)
+        self.setFixedSize(520, 660)
         self.setStyleSheet(f"""
             QDialog {{ background: {theme.BG_APP}; }}
             QLabel {{ color: {theme.TEXT_MAIN}; font-size: {theme.FS_BASE}px; }}
@@ -28,7 +37,7 @@ class UserFormDialog(QDialog):
     def _build(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(16)
+        layout.setSpacing(12)
 
         title = QLabel("Edit User" if self.is_edit else "Add User")
         title.setStyleSheet(
@@ -45,46 +54,32 @@ class UserFormDialog(QDialog):
         )
         layout.addWidget(subtitle)
 
-        layout.addSpacing(4)
-
         form = QFormLayout()
-        form.setSpacing(12)
+        form.setSpacing(10)
         form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
         self.name = QLineEdit(self.user_data.get("name", ""))
         self.name.setPlaceholderText("Full name")
-        self.name.setFixedHeight(40)
+        self.name.setFixedHeight(38)
         self.name.setStyleSheet(theme.input_qss())
-        form.addRow(self._label("Name"), self.name)
+        form.addRow(self._label("Name *"), self.name)
 
         self.id_number = QLineEdit(self.user_data.get("id_number", ""))
         self.id_number.setPlaceholderText("e.g. 9001015009087")
-        self.id_number.setFixedHeight(40)
+        self.id_number.setFixedHeight(38)
         self.id_number.setReadOnly(self.is_edit)
-        self.id_number.setStyleSheet(
-            theme.input_qss() if not self.is_edit
-            else f"""
-                QLineEdit {{
-                    padding: 0 14px;
-                    border: 2px solid {theme.BORDER};
-                    border-radius: {theme.RADIUS_MD}px;
-                    font-size: {theme.FS_MD}px;
-                    color: {theme.TEXT_MUTED};
-                    background: {theme.BG_SUBTLE};
-                }}
-            """
-        )
-        form.addRow(self._label("ID Number"), self.id_number)
+        self.id_number.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("ID Number *"), self.id_number)
 
         self.email = QLineEdit(self.user_data.get("email", ""))
         self.email.setPlaceholderText("user@example.com")
-        self.email.setFixedHeight(40)
+        self.email.setFixedHeight(38)
         self.email.setStyleSheet(theme.input_qss())
-        form.addRow(self._label("Email"), self.email)
+        form.addRow(self._label("Email *"), self.email)
 
         self.phone = QLineEdit(self.user_data.get("phone", "") or "")
         self.phone.setPlaceholderText("Optional")
-        self.phone.setFixedHeight(40)
+        self.phone.setFixedHeight(38)
         self.phone.setStyleSheet(theme.input_qss())
         form.addRow(self._label("Phone"), self.phone)
 
@@ -92,27 +87,47 @@ class UserFormDialog(QDialog):
         self.role.addItems(ROLES)
         if self.user_data.get("role"):
             self.role.setCurrentText(self.user_data["role"])
-        self.role.setFixedHeight(40)
+        self.role.setFixedHeight(38)
         self.role.setStyleSheet(theme.input_qss())
-        form.addRow(self._label("Role"), self.role)
+        form.addRow(self._label("Role *"), self.role)
 
         self.status = QComboBox()
         self.status.addItems(STATUSES)
         if self.user_data.get("status"):
             self.status.setCurrentText(self.user_data["status"])
-        self.status.setFixedHeight(40)
+        self.status.setFixedHeight(38)
         self.status.setStyleSheet(theme.input_qss())
-        form.addRow(self._label("Status"), self.status)
+        form.addRow(self._label("Status *"), self.status)
 
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.Password)
-        self.password.setFixedHeight(40)
+        self.password.setFixedHeight(38)
         self.password.setPlaceholderText(
             "Leave blank to keep current" if self.is_edit
             else "Minimum 6 characters"
         )
         self.password.setStyleSheet(theme.input_qss())
         form.addRow(self._label("Password"), self.password)
+
+        # ---- Optional security question
+        sec_lbl = QLabel("Account Recovery (optional)")
+        sec_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-weight: bold; "
+            f"font-size: {theme.FS_SM}px; padding-top: 6px;"
+        )
+        form.addRow(sec_lbl)
+
+        self.question_combo = QComboBox()
+        self.question_combo.addItems(SECURITY_QUESTIONS)
+        self.question_combo.setFixedHeight(38)
+        self.question_combo.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Security Q"), self.question_combo)
+
+        self.answer = QLineEdit()
+        self.answer.setPlaceholderText("Answer (leave blank to keep current)")
+        self.answer.setFixedHeight(38)
+        self.answer.setStyleSheet(theme.input_qss())
+        form.addRow(self._label("Answer"), self.answer)
 
         layout.addLayout(form)
         layout.addStretch()
@@ -168,4 +183,6 @@ class UserFormDialog(QDialog):
             "role": self.role.currentText(),
             "status": self.status.currentText(),
             "password": self.password.text(),
+            "security_question": self.question_combo.currentText(),
+            "security_answer": self.answer.text().strip(),
         }

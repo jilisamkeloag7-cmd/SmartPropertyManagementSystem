@@ -1,4 +1,4 @@
-print(">>> seed_rich_data.py V6 <<<")
+print(">>> seed_rich_data.py V9 <<<")
 
 """
 Rich test-data seed script.
@@ -17,7 +17,9 @@ Usage:
 
 import os
 import re
+from Services.security import hash_answer
 from Models.viewing_request import ViewingRequest
+from Models.lease_application import LeaseApplication
 from datetime import date, datetime, timedelta
 from Database.connection import engine, get_session
 from Models.base import Base
@@ -150,41 +152,57 @@ def reset_and_seed():
         # USERS
         # ============================================================
         print("[seed] Creating users...")
+
+        SEC_Q = "What is your mother's maiden name?"
+
         admin = User(id_number="0000000000", name="System Admin",
                      email="admin@spm.local", phone="0000000000",
                      password_hash=hash_password("admin123"),
-                     role=UserRole.ADMIN, status="Active")
+                     role=UserRole.ADMIN, status="Active",
+                     security_question=SEC_Q, security_answer_hash=hash_answer("root"))
         manager = User(id_number="9001015009087", name="Mandy Manager",
                        email="manager@spm.local", phone="0812345678",
                        password_hash=hash_password("manager123"),
-                       role=UserRole.MANAGER, status="Active")
+                       role=UserRole.MANAGER, status="Active",
+                       security_question=SEC_Q, security_answer_hash=hash_answer("mandy"))
         owner1 = User(id_number="8505055555080", name="John Owner",
                       email="owner@spm.local", phone="0821234567",
                       password_hash=hash_password("owner123"),
-                      role=UserRole.OWNER, status="Active")
+                      role=UserRole.OWNER, status="Active",
+                      security_question=SEC_Q, security_answer_hash=hash_answer("john"))
         owner2 = User(id_number="8807077777080", name="Sarah Landlord",
                       email="sarah@spm.local", phone="0827654321",
                       password_hash=hash_password("sarah123"),
-                      role=UserRole.OWNER, status="Active")
+                      role=UserRole.OWNER, status="Active",
+                      security_question=SEC_Q, security_answer_hash=hash_answer("sarah"))
         tenant1 = User(id_number="0102030405060", name="Jane Tenant",
                        email="tenant@spm.local", phone="0837654321",
                        password_hash=hash_password("tenant123"),
-                       role=UserRole.TENANT, status="Active")
+                       role=UserRole.TENANT, status="Active",
+                       security_question=SEC_Q, security_answer_hash=hash_answer("jane"))
         tenant2 = User(id_number="0203040506070", name="Thabo Mkhize",
                        email="thabo@spm.local", phone="0845555555",
                        password_hash=hash_password("thabo123"),
-                       role=UserRole.TENANT, status="Active")
+                       role=UserRole.TENANT, status="Active",
+                       security_question=SEC_Q, security_answer_hash=hash_answer("thabo"))
         tenant3 = User(id_number="0304050607080", name="Naledi Zulu",
                        email="naledi@spm.local", phone="0856666666",
                        password_hash=hash_password("naledi123"),
-                       role=UserRole.TENANT, status="Active")
+                       role=UserRole.TENANT, status="Active",
+                       security_question=SEC_Q, security_answer_hash=hash_answer("naledi"))
         inactive = User(id_number="0405060708090", name="Peter Former",
                         email="peter@spm.local", phone="0867777777",
                         password_hash=hash_password("peter123"),
-                        role=UserRole.TENANT, status="Inactive")
+                        role=UserRole.TENANT, status="Inactive",
+                        security_question=SEC_Q, security_answer_hash=hash_answer("peter"))
         db.add_all([admin, manager, owner1, owner2,
                     tenant1, tenant2, tenant3, inactive])
         db.flush()
+
+        print()
+        print("Security Q for all test accounts: 'What is your mother's maiden name?'")
+        print("Answers: root, mandy, john, sarah, jane, thabo, naledi, peter")
+        print("(each matches the respective user, lowercase)")
 
         # ============================================================
         # PROPERTIES
@@ -421,6 +439,49 @@ def reset_and_seed():
                          title="Urgent request — Geyser burst",
                          message="Property #2 has an Urgent request.",
                          priority="High", created_at=_dt(-5), read_at=None),
+        ])
+
+        # ============================================================
+        # LEASE APPLICATIONS
+        # ============================================================
+        print("[seed] Creating lease applications...")
+        db.add_all([
+            # Pending — waiting for manager decision
+            LeaseApplication(property_id=p6.property_id, tenant_id=tenant1.user_id,
+                             preferred_start=_d(14), duration_months=12,
+                             message="I'm interested in the Springfield apartment. "
+                                     "Looking for a 12-month lease starting mid-October.",
+                             status="Pending", created_at=_dt(-1)),
+            LeaseApplication(property_id=p4.property_id, tenant_id=tenant2.user_id,
+                             preferred_start=_d(30), duration_months=24,
+                             message="Interested in the shop front for a small business. "
+                                     "Planning to sign a 2-year lease.",
+                             status="Pending", created_at=_dt(-2)),
+
+            # Approved — reference to historical lease
+            LeaseApplication(property_id=p1.property_id, tenant_id=tenant1.user_id,
+                             preferred_start=_d(-90), duration_months=12,
+                             message="Family home — matches our needs perfectly.",
+                             status="Approved",
+                             decision_note="Approved. Welcome to 12 Main Rd!",
+                             created_lease_id=l1.lease_id,
+                             created_at=_dt(-95), decided_at=_dt(-92)),
+
+            # Declined — historical
+            LeaseApplication(property_id=p2.property_id, tenant_id=tenant3.user_id,
+                             preferred_start=_d(-400), duration_months=6,
+                             message="Interested in a short-term lease.",
+                             status="Declined",
+                             decision_note="Property already occupied by another tenant.",
+                             created_at=_dt(-405), decided_at=_dt(-403)),
+
+            # Cancelled by tenant
+            LeaseApplication(property_id=p4.property_id, tenant_id=tenant3.user_id,
+                             preferred_start=_d(-30), duration_months=12,
+                             message="Tentatively exploring options.",
+                             status="Cancelled",
+                             decision_note="Withdrawn by tenant.",
+                             created_at=_dt(-35), decided_at=_dt(-33)),
         ])
 
         # ============================================================

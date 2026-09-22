@@ -1,4 +1,4 @@
-print(">>> properties_screen.py V6 <<<")
+print(">>> properties_screen.py V7 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -58,7 +58,6 @@ class PropertiesScreen(QWidget):
         layout.setContentsMargins(30, 26, 30, 26)
         layout.setSpacing(18)
 
-        # Header
         header = QHBoxLayout()
         header.setSpacing(12)
 
@@ -83,12 +82,12 @@ class PropertiesScreen(QWidget):
 
         header.addStretch()
 
-        btn_dashboard = QPushButton("← Dashboard")
-        btn_dashboard.setCursor(Qt.PointingHandCursor)
-        btn_dashboard.setFixedHeight(36)
-        btn_dashboard.setStyleSheet(theme.button_qss("ghost"))
-        btn_dashboard.clicked.connect(self._go_dashboard)
-        header.addWidget(btn_dashboard)
+        self.btn_dashboard = QPushButton("← Dashboard")
+        self.btn_dashboard.setCursor(Qt.PointingHandCursor)
+        self.btn_dashboard.setFixedHeight(36)
+        self.btn_dashboard.setStyleSheet(theme.button_qss("ghost"))
+        self.btn_dashboard.clicked.connect(self._go_dashboard)
+        header.addWidget(self.btn_dashboard)
 
         self.btn_add = QPushButton("+ Add Property")
         self.btn_add.setCursor(Qt.PointingHandCursor)
@@ -183,7 +182,6 @@ class PropertiesScreen(QWidget):
         hv.setSectionResizeMode(5, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        # Cards
         self.cards_container = QWidget()
         self.cards_container.setStyleSheet("background: transparent;")
         self.cards_grid = QGridLayout(self.cards_container)
@@ -192,7 +190,6 @@ class PropertiesScreen(QWidget):
         self.cards_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         layout.addWidget(self.cards_container, stretch=1)
 
-        # Actions
         self.actions_row = QHBoxLayout()
         self.actions_row.setSpacing(10)
         self.actions_row.addStretch()
@@ -217,7 +214,9 @@ class PropertiesScreen(QWidget):
         is_admin_like = self.role in ("Administrator", "Property Manager")
         is_owner = self.role == "Owner"
         is_tenant = self.role == "Tenant"
+        is_guest = self.role == "Guest"
 
+        # Title + badge
         if is_admin_like:
             self.title_label.setText("🏠 All Properties")
             self.readonly_badge.setVisible(False)
@@ -227,16 +226,24 @@ class PropertiesScreen(QWidget):
         elif is_tenant:
             self.title_label.setText("🏠 Browse Properties")
             self.readonly_badge.setVisible(True)
+        elif is_guest:
+            self.title_label.setText("🏠 Browse Properties")
+            self.readonly_badge.setVisible(False)
         else:
             self.title_label.setText("🏠 Properties")
             self.readonly_badge.setVisible(False)
 
+        # Dashboard button hidden for guest (no dashboard to go back to)
+        self.btn_dashboard.setVisible(not is_guest)
+
+        # Role-aware widget visibility
         self.btn_add.setVisible(is_admin_like)
         self.table.setVisible(is_admin_like)
-        self.cards_container.setVisible(is_owner or is_tenant)
+        self.cards_container.setVisible(is_owner or is_tenant or is_guest)
         self.btn_edit.setVisible(is_admin_like)
         self.btn_archive.setVisible(is_admin_like)
 
+        # Data
         filters = {
             "query": self.search_input.text().strip(),
             "status": self.status_filter.currentText(),
@@ -259,6 +266,9 @@ class PropertiesScreen(QWidget):
                 0 if r["property_id"] in leased_pids else 1,
                 r["property_id"],
             ))
+        elif is_guest:
+            # Guests only see Available properties
+            rows = [r for r in rows if r["status"] == "Available"]
 
         self.count_label.setText(f"{len(rows)} propert(y/ies)")
 
@@ -285,7 +295,6 @@ class PropertiesScreen(QWidget):
             if price is not None:
                 price_item.setForeground(QBrush(QColor(theme.PRIMARY)))
             self.table.setItem(r, 4, price_item)
-
             self.table.setItem(r, 5, QTableWidgetItem(p["build_details"] or ""))
 
     def _populate_cards(self, rows, is_tenant: bool):
