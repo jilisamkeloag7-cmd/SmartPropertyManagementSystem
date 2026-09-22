@@ -1,13 +1,14 @@
-print(">>> property_detail_dialog.py V1 <<<")
+print(">>> property_detail_dialog.py V2 <<<")
 
 import os
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
+    QScrollArea, QWidget, QMessageBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from Controllers.property_controller import PropertyController
+from Controllers.review_controller import ReviewController
 from ui import theme
 
 
@@ -16,12 +17,13 @@ IMAGE_H = 340
 
 
 class PropertyDetailDialog(QDialog):
-    """Rich detail view of a property with image gallery navigation."""
-
-    def __init__(self, parent=None, property_data: dict | None = None):
+    def __init__(self, parent=None, property_data: dict | None = None,
+                 session_user: dict | None = None):
         super().__init__(parent)
         self.property_data = property_data or {}
+        self.session_user = session_user or {}
         self.controller = PropertyController()
+        self.review_controller = ReviewController()
         self.images = []
         self.current_index = 0
 
@@ -33,16 +35,31 @@ class PropertyDetailDialog(QDialog):
                 self.images = []
 
         self.setWindowTitle(self.property_data.get("address", "Property"))
-        self.setFixedSize(700, 620)
+        self.setFixedSize(720, 780)
         self.setStyleSheet(f"""
             QDialog {{ background: {theme.BG_APP}; }}
             QLabel {{ color: {theme.TEXT_MAIN}; }}
         """)
         self._build()
         self._render_image()
+        self._load_reviews()
 
     def _build(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Scrollable content
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet(f"QScrollArea {{ background: {theme.BG_APP}; }}")
+
+        content = QWidget()
+        content.setStyleSheet(f"background: {theme.BG_APP};")
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(24, 22, 24, 22)
         layout.setSpacing(14)
 
@@ -78,7 +95,7 @@ class PropertyDetailDialog(QDialog):
         img_layout.addWidget(self.image_label)
         layout.addWidget(img_frame)
 
-        # ---- Image navigation
+        # ---- Image nav
         nav = QHBoxLayout()
         nav.addStretch()
 
@@ -106,7 +123,7 @@ class PropertyDetailDialog(QDialog):
         nav.addStretch()
         layout.addLayout(nav)
 
-        # ---- Details
+        # ---- Details card
         details_frame = QFrame()
         details_frame.setStyleSheet(theme.card_qss())
         details_layout = QVBoxLayout(details_frame)
@@ -140,7 +157,37 @@ class PropertyDetailDialog(QDialog):
 
         layout.addWidget(details_frame)
 
-        # ---- Close
+        # ---- Reviews section
+        reviews_header = QHBoxLayout()
+
+        self.reviews_title = QLabel("Reviews")
+        self.reviews_title.setStyleSheet(
+            f"font-size: {theme.FS_LG}px; font-weight: bold; "
+            f"color: {theme.TEXT_MAIN};"
+        )
+        reviews_header.addWidget(self.reviews_title)
+        reviews_header.addStretch()
+
+        self.btn_write_review = QPushButton("✎  Write Review")
+        self.btn_write_review.setCursor(Qt.PointingHandCursor)
+        self.btn_write_review.setFixedHeight(34)
+        self.btn_write_review.setStyleSheet(theme.button_qss("primary"))
+        self.btn_write_review.clicked.connect(self._on_write_review)
+        reviews_header.addWidget(self.btn_write_review)
+
+        layout.addLayout(reviews_header)
+
+        # Scroll area for reviews
+        self.reviews_container = QWidget()
+        self.reviews_container.setStyleSheet("background: transparent;")
+        self.reviews_layout = QVBoxLayout(self.reviews_container)
+        self.reviews_layout.setContentsMargins(0, 0, 0, 0)
+        self.reviews_layout.setSpacing(8)
+        layout.addWidget(self.reviews_container)
+
+        layout.addStretch()
+
+        # Footer
         footer = QHBoxLayout()
         footer.addStretch()
         btn_close = QPushButton("Close")
@@ -151,7 +198,9 @@ class PropertyDetailDialog(QDialog):
         footer.addWidget(btn_close)
         layout.addLayout(footer)
 
-    # ------------------------------------------------------------------ gallery
+        outer.addWidget(scroll)
+
+    # ------------------------------------------------------------------ image gallery
     def _render_image(self):
         total = len(self.images)
         if total == 0:
@@ -193,3 +242,157 @@ class PropertyDetailDialog(QDialog):
             return
         self.current_index = (self.current_index + 1) % len(self.images)
         self._render_image()
+
+    # ------------------------------------------------------------------ reviews
+    def _load_reviews(self):
+        # Clear existing review cards
+        while self.reviews_layout.count():
+            item = self.reviews_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        pid = self.property_data.get("property_id")
+        if not pid:
+            return
+
+        try:
+            reviews = self.review_controller.list_for_property(pid)
+            avg, count = self.review_controller.average_for_property(pid)
+        except Exception:
+            reviews, avg, count = [], None, 0
+
+        # Header
+        if avg is not None and count > 0:
+            stars = "★" * int(round(avg)) + "☆" * (5 - int(round(avg)))
+            self.reviews_title.setText(
+                f"Reviews   {stars}   {avg} ({count})"
+            )
+        else:
+            self.reviews_title.setText("Reviews")
+
+        # Show/hide write button based on role
+        role = self.session_user.get("role", "")
+        can_write = role == "Tenant"
+        self.btn_write_review.setVisible(can_write)
+
+        if not reviews:
+            empty = QLabel("No reviews yet. Be the first!")
+            empty.setStyleSheet(
+                f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_BASE}px; "
+                f"font-style: italic; padding: 8px;"
+            )
+            self.reviews_layout.addWidget(empty)
+            return
+
+        for r in reviews:
+            self.reviews_layout.addWidget(self._make_review_card(r))
+
+    def _make_review_card(self, r: dict):
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background: {theme.BG_CARD};
+                border: 1px solid {theme.BORDER};
+                border-radius: {theme.RADIUS_MD}px;
+            }}
+        """)
+
+        inner = QVBoxLayout(card)
+        inner.setContentsMargins(14, 10, 14, 10)
+        inner.setSpacing(4)
+
+        # Header row: stars + reviewer + date
+        header = QHBoxLayout()
+        rating = r.get("rating", 0)
+        stars = "★" * rating + "☆" * (5 - rating)
+        stars_lbl = QLabel(stars)
+        stars_lbl.setStyleSheet(
+            f"color: {theme.WARNING}; font-size: {theme.FS_BASE}px; "
+            f"letter-spacing: 1px;"
+        )
+        header.addWidget(stars_lbl)
+
+        name_lbl = QLabel(r.get("reviewer_name", "Anonymous"))
+        name_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MAIN}; font-size: {theme.FS_SM}px; "
+            f"font-weight: bold; padding-left: 8px;"
+        )
+        header.addWidget(name_lbl)
+
+        header.addStretch()
+
+        date_lbl = QLabel(str(r.get("created_at", ""))[:10])
+        date_lbl.setStyleSheet(
+            f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_XS}px;"
+        )
+        header.addWidget(date_lbl)
+
+        # Admin delete button
+        role = self.session_user.get("role", "")
+        if role in ("Administrator", "Property Manager"):
+            del_btn = QPushButton("✕")
+            del_btn.setCursor(Qt.PointingHandCursor)
+            del_btn.setFixedSize(24, 24)
+            del_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    color: {theme.TEXT_FAINT};
+                    border: none;
+                    font-size: 14px;
+                }}
+                QPushButton:hover {{ color: {theme.DANGER}; }}
+            """)
+            del_btn.setToolTip("Remove this review")
+            del_btn.clicked.connect(
+                lambda checked=False, rid=r.get("review_id"): self._on_delete_review(rid)
+            )
+            header.addWidget(del_btn)
+
+        inner.addLayout(header)
+
+        # Comment
+        comment = r.get("comment") or "(no comment)"
+        comment_lbl = QLabel(comment)
+        comment_lbl.setWordWrap(True)
+        comment_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px; "
+            f"padding-top: 2px;"
+        )
+        inner.addWidget(comment_lbl)
+
+        return card
+
+    def _on_write_review(self):
+        from ui.review_form_dialog import ReviewFormDialog
+        pid = self.property_data.get("property_id")
+        if not pid:
+            return
+        dlg = ReviewFormDialog(
+            self,
+            property_address=self.property_data.get("address", ""),
+        )
+        if dlg.exec():
+            data = dlg.get_data()
+            ok, msg = self.review_controller.create(
+                pid, data["rating"], data["comment"], self.session_user
+            )
+            if ok:
+                QMessageBox.information(self, "Thank you", msg)
+                self._load_reviews()
+            else:
+                QMessageBox.warning(self, "Error", msg)
+
+    def _on_delete_review(self, review_id: int):
+        confirm = QMessageBox.question(
+            self, "Remove review",
+            "Remove this review permanently?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        ok, msg = self.review_controller.delete(review_id, self.session_user)
+        if ok:
+            self._load_reviews()
+        else:
+            QMessageBox.warning(self, "Error", msg)

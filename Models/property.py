@@ -1,4 +1,4 @@
-print(">>> property.py V3 <<<")
+print(">>> property.py V4 <<<")
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float
 from sqlalchemy.orm import relationship
@@ -17,7 +17,6 @@ class Property(Base):
     listing_price = Column(Float, nullable=True)
     created_at    = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
     ownerships   = relationship("Ownership", back_populates="property",
                                 cascade="all, delete-orphan")
     leases       = relationship("Lease", back_populates="property",
@@ -27,6 +26,9 @@ class Property(Base):
     images       = relationship("PropertyImage", back_populates="property",
                                 cascade="all, delete-orphan",
                                 order_by="PropertyImage.order_index")
+    reviews      = relationship("Review", back_populates="property",
+                                cascade="all, delete-orphan",
+                                order_by="Review.created_at.desc()")
 
     def __repr__(self):
         return f"<Property #{self.property_id} {self.address}>"

@@ -1,4 +1,4 @@
-print(">>> seed_rich_data.py V2 <<<")
+print(">>> seed_rich_data.py V3 <<<")
 
 """
 Rich test-data seed script.
@@ -21,6 +21,7 @@ from Models.lease import Lease
 from Models.payment import Payment
 from Models.maintenance import MaintenanceRequest
 from Models.notification import Notification, NotificationPreference
+from Models.review import Review
 from Services.security import hash_password
 
 
@@ -29,7 +30,8 @@ def _d(days_offset: int) -> date:
 
 
 def _dt(days_offset: int, hour: int = 9) -> datetime:
-    return datetime.utcnow() + timedelta(days=days_offset, hours=hour - datetime.utcnow().hour)
+    return datetime.utcnow() + timedelta(days=days_offset,
+                                          hours=hour - datetime.utcnow().hour)
 
 
 def reset_and_seed():
@@ -80,7 +82,7 @@ def reset_and_seed():
         db.flush()
 
         # ============================================================
-        # PROPERTIES — now with listing_price
+        # PROPERTIES
         # ============================================================
         print("[seed] Creating properties...")
         p1 = Property(address="12 Main Rd, Durban", property_type="House",
@@ -132,6 +134,7 @@ def reset_and_seed():
         # LEASES
         # ============================================================
         print("[seed] Creating leases...")
+        # Active leases
         l1 = Lease(property_id=p1.property_id, tenant_id=tenant1.user_id,
                    start_date=_d(-90), end_date=_d(275),
                    rent_amount=6500.0, status="Active")
@@ -141,10 +144,34 @@ def reset_and_seed():
         l3 = Lease(property_id=p3.property_id, tenant_id=tenant3.user_id,
                    start_date=_d(-180), end_date=_d(60),
                    rent_amount=11500.0, status="Active")
+
+        # Terminated (history — gives reviewers legitimate access)
+        # Jane on Property 6
         l4 = Lease(property_id=p6.property_id, tenant_id=tenant1.user_id,
-                   start_date=_d(-400), end_date=_d(-50),
+                   start_date=_d(-400), end_date=_d(-100),
                    rent_amount=4800.0, status="Terminated")
-        db.add_all([l1, l2, l3, l4])
+        # Naledi on Property 6 (more recent — took over after Jane)
+        l5 = Lease(property_id=p6.property_id, tenant_id=tenant3.user_id,
+                   start_date=_d(-90), end_date=_d(-30),
+                   rent_amount=4800.0, status="Terminated")
+        # Thabo on Property 4
+        l6 = Lease(property_id=p4.property_id, tenant_id=tenant2.user_id,
+                   start_date=_d(-600), end_date=_d(-400),
+                   rent_amount=14000.0, status="Terminated")
+        # Naledi on Property 5
+        l7 = Lease(property_id=p5.property_id, tenant_id=tenant3.user_id,
+                   start_date=_d(-500), end_date=_d(-300),
+                   rent_amount=18500.0, status="Terminated")
+        # Naledi on Property 1 (long ago, before Jane)
+        l8 = Lease(property_id=p1.property_id, tenant_id=tenant3.user_id,
+                   start_date=_d(-900), end_date=_d(-700),
+                   rent_amount=6500.0, status="Terminated")
+        # Jane on Property 3 (long ago, before Naledi)
+        l9 = Lease(property_id=p3.property_id, tenant_id=tenant1.user_id,
+                   start_date=_d(-800), end_date=_d(-600),
+                   rent_amount=11500.0, status="Terminated")
+
+        db.add_all([l1, l2, l3, l4, l5, l6, l7, l8, l9])
         db.flush()
 
         # ============================================================
@@ -253,8 +280,72 @@ def reset_and_seed():
                             "lease_expiring": 30}.get(event, 0),
                 ))
 
+        # ============================================================
+        # REVIEWS
+        # ============================================================
+        print("[seed] Creating reviews...")
+        # Reviewer/property pairs must be backed by lease history (see leases above).
+        reviews = [
+            # Jane — Property 1 (current active), Property 3 (historical),
+            #        Property 6 (historical)
+            Review(property_id=p1.property_id, reviewer_id=tenant1.user_id,
+                   rating=4,
+                   comment=("Great location, walking distance to shops. "
+                            "Water pressure in the main bathroom was an issue "
+                            "but the landlord responded quickly."),
+                   created_at=_dt(-60)),
+            Review(property_id=p3.property_id, reviewer_id=tenant1.user_id,
+                   rating=5,
+                   comment=("Beautiful family home with plenty of space. "
+                            "Loved the double garage. Would definitely rent again."),
+                   created_at=_dt(-550)),
+            Review(property_id=p6.property_id, reviewer_id=tenant1.user_id,
+                   rating=3,
+                   comment=("Cozy apartment, good value for the price. "
+                            "A bit small for two people but fine for one."),
+                   created_at=_dt(-150)),
+
+            # Thabo — Property 2 (current active), Property 4 (historical)
+            Review(property_id=p2.property_id, reviewer_id=tenant2.user_id,
+                   rating=5,
+                   comment=("Stunning sea views — waking up to the ocean was "
+                            "incredible. Can get noisy on weekends."),
+                   created_at=_dt(-200)),
+            Review(property_id=p4.property_id, reviewer_id=tenant2.user_id,
+                   rating=3,
+                   comment=("Decent commercial space with high foot traffic. "
+                            "Parking was tight during peak hours."),
+                   created_at=_dt(-450)),
+
+            # Naledi — Property 1 (historical), Property 3 (current active),
+            #          Property 5 (historical), Property 6 (historical)
+            Review(property_id=p1.property_id, reviewer_id=tenant3.user_id,
+                   rating=4,
+                   comment=("Comfortable home in a quiet neighbourhood. "
+                            "Friendly neighbours and safe area."),
+                   created_at=_dt(-750)),
+            Review(property_id=p3.property_id, reviewer_id=tenant3.user_id,
+                   rating=5,
+                   comment=("Spacious family home. The double garage was a "
+                            "lifesaver with two cars. Highly recommend."),
+                   created_at=_dt(-120)),
+            Review(property_id=p5.property_id, reviewer_id=tenant3.user_id,
+                   rating=2,
+                   comment=("Pool needed significant work when we moved in. "
+                            "Took months to get it functional. House itself "
+                            "was fine but the maintenance was slow."),
+                   created_at=_dt(-380)),
+            Review(property_id=p6.property_id, reviewer_id=tenant3.user_id,
+                   rating=4,
+                   comment=("Modern finishes and safe area. Would recommend "
+                            "for young professionals."),
+                   created_at=_dt(-40)),
+        ]
+        db.add_all(reviews)
+
         db.commit()
         print("[seed] ✅ Rich test data created successfully.")
+        print(f"[seed] {len(reviews)} reviews created across all active properties.")
         print()
         print("=" * 60)
         print("TEST ACCOUNTS")

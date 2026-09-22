@@ -1,4 +1,4 @@
-print(">>> properties_screen.py V5 <<<")
+print(">>> properties_screen.py V6 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -311,7 +311,11 @@ class PropertiesScreen(QWidget):
             self.cards_grid.addWidget(card, row, col)
 
     def _on_card_click(self, property_data):
-        dlg = PropertyDetailDialog(self, property_data=property_data)
+        dlg = PropertyDetailDialog(
+            self,
+            property_data=property_data,
+            session_user=self.user_data,
+        )
         dlg.exec()
 
     def _selected_property_id(self):

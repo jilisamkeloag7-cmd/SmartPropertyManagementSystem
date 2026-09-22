@@ -1,4 +1,4 @@
-print(">>> property_card.py V3 <<<")
+print(">>> property_card.py V4 <<<")
 
 import os
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
@@ -7,10 +7,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from ui import theme
 from Controllers.property_controller import PropertyController
+from Controllers.review_controller import ReviewController
 
 
 CARD_W = 260
-CARD_H = 260
+CARD_H = 280
 IMAGE_H = 130
 
 
@@ -22,7 +23,8 @@ class PropertyCard(QFrame):
         self.on_click = on_click
         self.action_label = action_label
         self.on_action = on_action
-        self._controller = PropertyController()
+        self._property_controller = PropertyController()
+        self._review_controller = ReviewController()
         self._build()
 
     def _build(self):
@@ -43,7 +45,7 @@ class PropertyCard(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # ---- Image area
+        # ---- Image
         image_area = QLabel()
         image_area.setAlignment(Qt.AlignCenter)
         image_area.setFixedHeight(IMAGE_H)
@@ -55,10 +57,9 @@ class PropertyCard(QFrame):
             color: {theme.PRIMARY};
         """)
 
-        # Try to load first image
         img_path = None
         try:
-            img_path = self._controller.first_image_path(
+            img_path = self._property_controller.first_image_path(
                 self.property_data.get("property_id")
             )
         except Exception:
@@ -71,7 +72,6 @@ class PropertyCard(QFrame):
                     CARD_W, IMAGE_H, Qt.KeepAspectRatioByExpanding,
                     Qt.SmoothTransformation,
                 )
-                # Crop to exact size (centred)
                 x = max(0, (scaled.width() - CARD_W) // 2)
                 y = max(0, (scaled.height() - IMAGE_H) // 2)
                 cropped = scaled.copy(x, y, CARD_W, IMAGE_H)
@@ -83,11 +83,12 @@ class PropertyCard(QFrame):
 
         outer.addWidget(image_area)
 
-        # ---- Info area
+        # ---- Info
         info = QVBoxLayout()
-        info.setContentsMargins(14, 12, 14, 12)
-        info.setSpacing(6)
+        info.setContentsMargins(14, 10, 14, 12)
+        info.setSpacing(5)
 
+        # Address
         addr = QLabel(self.property_data.get("address", "(no address)"))
         addr.setWordWrap(True)
         addr.setMaximumHeight(36)
@@ -96,6 +97,49 @@ class PropertyCard(QFrame):
             f"color: {theme.TEXT_MAIN}; border: none; background: transparent;"
         )
         info.addWidget(addr)
+
+        # ---- Rating row (small)
+        try:
+            avg, count = self._review_controller.average_for_property(
+                self.property_data.get("property_id")
+            )
+        except Exception:
+            avg, count = None, 0
+
+        if avg is not None and count > 0:
+            rating_row = QHBoxLayout()
+            rating_row.setSpacing(4)
+
+            stars = "★" * int(round(avg)) + "☆" * (5 - int(round(avg)))
+            stars_lbl = QLabel(stars)
+            stars_lbl.setStyleSheet(
+                f"color: {theme.WARNING}; font-size: {theme.FS_BASE}px; "
+                f"letter-spacing: 1px; border: none; background: transparent;"
+            )
+            rating_row.addWidget(stars_lbl)
+
+            score_lbl = QLabel(f"{avg}")
+            score_lbl.setStyleSheet(
+                f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_XS}px; "
+                f"font-weight: bold; border: none; background: transparent;"
+            )
+            rating_row.addWidget(score_lbl)
+
+            count_lbl = QLabel(f"({count})")
+            count_lbl.setStyleSheet(
+                f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_XS}px; "
+                f"border: none; background: transparent;"
+            )
+            rating_row.addWidget(count_lbl)
+            rating_row.addStretch()
+            info.addLayout(rating_row)
+        else:
+            no_reviews = QLabel("No reviews yet")
+            no_reviews.setStyleSheet(
+                f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_XS}px; "
+                f"font-style: italic; border: none; background: transparent;"
+            )
+            info.addWidget(no_reviews)
 
         # ---- Price
         price = self.property_data.get("listing_price")
