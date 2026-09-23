@@ -1,4 +1,4 @@
-print(">>> lease_application_service.py V1 <<<")
+print(">>> lease_application_service.py V2 <<<")
 
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
@@ -6,6 +6,7 @@ from Repositories.lease_application_repository import LeaseApplicationRepository
 from Repositories.lease_repository import LeaseRepository
 from Repositories.property_repository import PropertyRepository
 from Repositories.user_repository import UserRepository
+from Repositories.ownership_repository import OwnershipRepository
 from Services.lease_service import LeaseService
 from Services.notification_service import NotificationService
 
@@ -23,6 +24,7 @@ class LeaseApplicationService:
         self.leases = LeaseRepository()
         self.properties = PropertyRepository()
         self.users = UserRepository()
+        self.ownerships = OwnershipRepository()
         self.lease_service = LeaseService()
         self.notifications = NotificationService()
 
@@ -64,6 +66,10 @@ class LeaseApplicationService:
 
         if role == "Tenant" and uid:
             rows = self.applications.list_for_tenant(uid)
+        elif role == "Owner" and uid:
+            owned_pids = set(self.ownerships.property_ids_for_owner(uid))
+            rows = [a for a in self.applications.list_all()
+                    if a.property_id in owned_pids]
         else:
             rows = self.applications.list_all()
 
@@ -164,7 +170,6 @@ class LeaseApplicationService:
             return False, "Property not found."
 
         if prop.status != "Available":
-            # Someone else already took it — auto-decline this one
             self.applications.set_status(
                 application_id, "Declined",
                 decision_note=f"Property is no longer available ({prop.status.lower()}).",
@@ -178,10 +183,8 @@ class LeaseApplicationService:
             )
             return False, "Property is no longer available. Application has been declined."
 
-        # Compute end date
         end_date = self._compute_end_date(a.preferred_start, a.duration_months)
 
-        # Create the lease via LeaseService
         lease_data = {
             "property_id": a.property_id,
             "tenant_id": a.tenant_id,
@@ -197,13 +200,11 @@ class LeaseApplicationService:
         if not ok:
             return False, f"Failed to create lease: {msg}"
 
-        # Find the newly created lease (latest active for this property+tenant)
         leases = self.leases.list_for_tenant(a.tenant_id)
         active = [l for l in leases
                   if l.property_id == a.property_id and l.status == "Active"]
         created_lease_id = active[0].lease_id if active else None
 
-        # Mark this application as approved
         decision = (note or "").strip() or "Approved by management."
         self.applications.set_status(
             application_id, "Approved",
@@ -211,7 +212,6 @@ class LeaseApplicationService:
             created_lease_id=created_lease_id,
         )
 
-        # Notify the tenant
         self.notifications.emit(
             user_id=a.tenant_id,
             type="lease_application_approved",
@@ -224,7 +224,6 @@ class LeaseApplicationService:
             priority="High",
         )
 
-        # Auto-decline all other pending applications for this property
         other_pending = [
             o for o in self.applications.list_pending_for_property(a.property_id)
             if o.application_id != application_id
@@ -270,7 +269,6 @@ class LeaseApplicationService:
         )
         return True, "Application declined."
 
-    # ------------------------------------------------------------------ tenant withdraw
     def withdraw(self, application_id: int, session_user: dict):
         a = self.applications.find_by_id(application_id)
         if not a:

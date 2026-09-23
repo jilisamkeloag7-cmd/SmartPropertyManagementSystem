@@ -1,4 +1,4 @@
-print(">>> sidebar.py V5 <<<")
+print(">>> sidebar.py V6 <<<")
 
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QWidget, QMessageBox)
@@ -12,8 +12,8 @@ SIDEBAR_W = 220
 NAV_ITEMS = [
     ("🏠", "Dashboard",     "dashboard",    None),
     ("🏘",  "Properties",   "properties",   None),
-    ("📅", "Viewings",      "viewings",     {"Administrator", "Property Manager", "Tenant"}),
-    ("📝", "Applications",  "applications", {"Administrator", "Property Manager", "Tenant"}),
+    ("📅", "Viewings",      "viewings",     {"Administrator", "Property Manager", "Owner", "Tenant"}),
+    ("📝", "Applications",  "applications", {"Administrator", "Property Manager", "Owner", "Tenant"}),
     ("📄", "Leases",        "leases",       None),
     ("💰", "Payments",      "payments",     None),
     ("🔧", "Maintenance",   "maintenance",  None),
@@ -22,7 +22,6 @@ NAV_ITEMS = [
     ("👥", "Users",         "users",        {"Administrator"}),
 ]
 
-# For guests — only Properties
 GUEST_NAV_ITEMS = [
     ("🏘",  "Browse Properties", "properties", None),
 ]
@@ -49,8 +48,6 @@ class Sidebar(QFrame):
         role = self.user_data.get("role", "")
         self.user_name.setText(name)
         self.user_role.setText(role)
-
-        # Swap footer action based on guest vs authenticated
         self.btn_logout.setVisible(not self.is_guest)
         self.btn_sign_in.setVisible(self.is_guest)
 
@@ -184,7 +181,6 @@ class Sidebar(QFrame):
         self._buttons = {}
 
         role = (self.user_data or {}).get("role", "")
-
         items = GUEST_NAV_ITEMS if self.is_guest else NAV_ITEMS
 
         for icon, label, key, allowed in items:

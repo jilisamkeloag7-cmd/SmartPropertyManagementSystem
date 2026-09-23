@@ -1,16 +1,16 @@
-print(">>> viewing_service.py V1 <<<")
+print(">>> viewing_service.py V2 <<<")
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from Repositories.viewing_request_repository import ViewingRequestRepository
 from Repositories.property_repository import PropertyRepository
 from Repositories.user_repository import UserRepository
+from Repositories.ownership_repository import OwnershipRepository
 from Services.notification_service import NotificationService
 
 
 MANAGER_ROLES = {"Administrator", "Property Manager"}
 VALID_TIME_SLOTS = {"Morning", "Afternoon", "Evening"}
 
-# Booking window
 MIN_DAYS_AHEAD = 1
 MAX_DAYS_AHEAD = 60
 
@@ -20,9 +20,9 @@ class ViewingService:
         self.viewings = ViewingRequestRepository()
         self.properties = PropertyRepository()
         self.users = UserRepository()
+        self.ownerships = OwnershipRepository()
         self.notifications = NotificationService()
 
-    # ------------------------------------------------------------------ helpers
     def _enrich(self, v):
         prop = self.properties.find_by_id(v.property_id)
         tenant = self.users.find_by_id(v.tenant_id)
@@ -54,6 +54,10 @@ class ViewingService:
 
         if role == "Tenant" and uid:
             rows = self.viewings.list_for_tenant(uid)
+        elif role == "Owner" and uid:
+            owned_pids = set(self.ownerships.property_ids_for_owner(uid))
+            rows = [v for v in self.viewings.list_all()
+                    if v.property_id in owned_pids]
         else:
             rows = self.viewings.list_all()
 
@@ -74,7 +78,6 @@ class ViewingService:
         return self._enrich(v) if v else None
 
     def pending_count(self) -> int:
-        """For sidebar badge."""
         return sum(1 for v in self.viewings.list_all() if v.status == "Pending")
 
     # ------------------------------------------------------------------ writes
@@ -122,7 +125,6 @@ class ViewingService:
             message=msg or None,
         )
 
-        # Notify managers
         for u in self.users.list_all():
             if u.role.value in MANAGER_ROLES:
                 self.notifications.emit(
@@ -196,7 +198,6 @@ class ViewingService:
         return True, "Viewing declined."
 
     def cancel(self, request_id: int, session_user: dict):
-        """Tenant cancels their own pending request."""
         v = self.viewings.find_by_id(request_id)
         if not v:
             return False, "Request not found."

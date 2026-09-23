@@ -1,4 +1,4 @@
-print(">>> viewings_screen.py V1 <<<")
+print(">>> viewings_screen.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -20,6 +20,7 @@ class ViewingsScreen(QWidget):
         self.role = ""
         self.is_manager = False
         self.is_tenant = False
+        self.is_owner = False
         self._build()
 
     def set_user(self, user_data: dict):
@@ -27,6 +28,7 @@ class ViewingsScreen(QWidget):
         self.role = self.user_data.get("role", "")
         self.is_manager = self.role in ("Administrator", "Property Manager")
         self.is_tenant = self.role == "Tenant"
+        self.is_owner = self.role == "Owner"
         self._apply_role_ui()
         self.refresh()
 
@@ -53,6 +55,19 @@ class ViewingsScreen(QWidget):
             f"color: {theme.TEXT_MAIN};"
         )
         header.addWidget(self.title_label)
+
+        self.readonly_badge = QLabel("Read-only")
+        self.readonly_badge.setStyleSheet(f"""
+            background: {theme.WARNING_SOFT};
+            color: {theme.WARNING_HOVER};
+            padding: 4px 12px;
+            border-radius: {theme.RADIUS_SM}px;
+            font-size: {theme.FS_XS}px;
+            font-weight: bold;
+        """)
+        self.readonly_badge.setVisible(False)
+        header.addWidget(self.readonly_badge)
+
         header.addStretch()
 
         btn_dashboard = QPushButton("← Dashboard")
@@ -173,12 +188,19 @@ class ViewingsScreen(QWidget):
     def _apply_role_ui(self):
         if self.role == "Administrator":
             self.title_label.setText("📅 All Viewing Requests")
+            self.readonly_badge.setVisible(False)
         elif self.role == "Property Manager":
             self.title_label.setText("📅 Viewing Requests")
+            self.readonly_badge.setVisible(False)
+        elif self.role == "Owner":
+            self.title_label.setText("📅 Viewings on My Properties")
+            self.readonly_badge.setVisible(True)
         elif self.role == "Tenant":
             self.title_label.setText("📅 My Viewing Requests")
+            self.readonly_badge.setVisible(False)
         else:
             self.title_label.setText("📅 Viewings")
+            self.readonly_badge.setVisible(False)
 
         self.btn_cancel.setVisible(self.is_tenant)
         self.btn_approve.setVisible(self.is_manager)
