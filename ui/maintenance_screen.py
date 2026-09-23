@@ -1,15 +1,17 @@
-print(">>> maintenance_screen.py V2 <<<")
+print(">>> maintenance_screen.py V3 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
-    QMessageBox, QHeaderView, QAbstractItemView
+    QMessageBox, QHeaderView, QAbstractItemView, QScrollArea,
+    QFrame
 )
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtCore import Qt
 from Controllers.maintenance_controller import MaintenanceController
 from ui.maintenance_form_dialog import MaintenanceFormDialog
 from ui.maintenance_detail_dialog import MaintenanceDetailDialog
+from ui.widgets.entity_cards import MaintenanceKanbanCard, KanbanColumn
 from ui import theme
 
 
@@ -20,6 +22,13 @@ PRIORITY_COLORS = {
     "Urgent": theme.DANGER_HOVER,
 }
 
+COLUMNS = [
+    ("Open",         "#0ea5e9"),
+    ("In Progress",  "#f59e0b"),
+    ("Resolved",     "#10b981"),
+    ("Closed",       "#94a3b8"),
+]
+
 
 class MaintenanceScreen(QWidget):
     def __init__(self, parent=None):
@@ -27,13 +36,19 @@ class MaintenanceScreen(QWidget):
         self.parent_window = parent
         self.controller = MaintenanceController()
         self.user_data = None
+        self.role = ""
+        self.is_tenant = False
+        self.is_owner = False
         self.is_manager = False
+        self.column_widgets = {}
         self._build()
 
     def set_user(self, user_data: dict):
-        self.user_data = user_data
-        role = (user_data or {}).get("role", "")
-        self.is_manager = role in ("Administrator", "Property Manager")
+        self.user_data = user_data or {}
+        self.role = self.user_data.get("role", "")
+        self.is_tenant = self.role == "Tenant"
+        self.is_owner = self.role == "Owner"
+        self.is_manager = self.role in ("Administrator", "Property Manager")
         self._apply_role_ui()
         self.refresh()
 
@@ -44,20 +59,40 @@ class MaintenanceScreen(QWidget):
             "priority": self.priority_filter.currentText(),
         }
         rows = self.controller.list(filters, self.user_data)
-        self._populate_table(rows)
         self.count_label.setText(f"{len(rows)} request(s)")
 
+        if self.is_owner:
+            self._populate_table(rows)
+        else:
+            self._populate_kanban(rows)
+
     def _build(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        content.setStyleSheet(f"background: {theme.BG_APP};")
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(30, 26, 30, 26)
         layout.setSpacing(18)
 
+        # Header
         header = QHBoxLayout()
         header.setSpacing(12)
 
         self.header_title = QLabel("🔧 Maintenance")
         self.header_title.setStyleSheet(
-            f"font-size: {theme.FS_2XL}px; font-weight: bold; color: {theme.TEXT_MAIN};"
+            f"font-size: {theme.FS_2XL}px; font-weight: bold; "
+            f"color: {theme.TEXT_MAIN};"
         )
         header.addWidget(self.header_title)
 
@@ -91,6 +126,7 @@ class MaintenanceScreen(QWidget):
 
         layout.addLayout(header)
 
+        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
@@ -102,7 +138,9 @@ class MaintenanceScreen(QWidget):
         filters_row.addWidget(self.search_input, stretch=1)
 
         self.status_filter = QComboBox()
-        self.status_filter.addItems(["All", "Open", "In Progress", "Resolved", "Closed"])
+        self.status_filter.addItems(
+            ["All", "Open", "In Progress", "Resolved", "Closed"]
+        )
         self.status_filter.setFixedHeight(38)
         self.status_filter.setStyleSheet(theme.input_qss())
         self.status_filter.currentTextChanged.connect(self.refresh)
@@ -130,6 +168,7 @@ class MaintenanceScreen(QWidget):
         )
         layout.addWidget(self.count_label)
 
+        # ---- Table (owner only)
         self.table = QTableWidget()
         self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
@@ -176,41 +215,59 @@ class MaintenanceScreen(QWidget):
         hv.setSectionResizeMode(7, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(10)
-        actions.addStretch()
+        # ---- Kanban board (everyone else)
+        self.kanban = QWidget()
+        self.kanban.setStyleSheet("background: transparent;")
+        kanban_layout = QHBoxLayout(self.kanban)
+        kanban_layout.setContentsMargins(0, 0, 0, 0)
+        kanban_layout.setSpacing(14)
+        kanban_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+
+        for title, colour in COLUMNS:
+            col = KanbanColumn(title, colour)
+            kanban_layout.addWidget(col, stretch=1)
+            self.column_widgets[title] = col
+
+        layout.addWidget(self.kanban, stretch=1)
+
+        # Actions (owner only)
+        self.actions_row = QHBoxLayout()
+        self.actions_row.setSpacing(10)
+        self.actions_row.addStretch()
 
         self.btn_open = QPushButton("Open Selected")
         self.btn_open.setCursor(Qt.PointingHandCursor)
         self.btn_open.setFixedHeight(38)
         self.btn_open.setStyleSheet(theme.button_qss("primary"))
         self.btn_open.clicked.connect(self._on_open_selected)
-        actions.addWidget(self.btn_open)
+        self.actions_row.addWidget(self.btn_open)
 
-        layout.addLayout(actions)
+        layout.addLayout(self.actions_row)
 
     def _apply_role_ui(self):
-        role = (self.user_data or {}).get("role", "")
-
-        if role == "Administrator":
+        if self.role == "Administrator":
             self.header_title.setText("🔧 All Maintenance Requests")
             self.readonly_badge.setVisible(False)
             self.btn_add.setVisible(True)
-        elif role == "Property Manager":
+        elif self.role == "Property Manager":
             self.header_title.setText("🔧 Maintenance Requests")
             self.readonly_badge.setVisible(False)
             self.btn_add.setVisible(True)
-        elif role == "Owner":
+        elif self.role == "Owner":
             self.header_title.setText("🔧 Maintenance on My Properties")
             self.readonly_badge.setVisible(True)
-            self.btn_add.setVisible(False)
-        elif role == "Tenant":
-            self.header_title.setText("🔧 My Maintenance Requests")
+            self.btn_add.setVisible(True)
+        elif self.role == "Tenant":
+            self.header_title.setText("🔧 My Requests")
             self.readonly_badge.setVisible(False)
             self.btn_add.setVisible(True)
         else:
             self.header_title.setText("🔧 Maintenance")
             self.readonly_badge.setVisible(False)
+
+        self.table.setVisible(self.is_owner)
+        self.kanban.setVisible(not self.is_owner)
+        self.btn_open.setVisible(self.is_owner)
 
     def _populate_table(self, rows):
         self.table.setRowCount(0)
@@ -233,6 +290,25 @@ class MaintenanceScreen(QWidget):
                     item.setForeground(QBrush(QColor(PRIORITY_COLORS[m["priority"]])))
                 self.table.setItem(r, c, item)
 
+    def _populate_kanban(self, rows):
+        # Clear all columns
+        for col in self.column_widgets.values():
+            col.clear()
+
+        counts = {name: 0 for name, _ in COLUMNS}
+
+        for r in rows:
+            status = r.get("status", "")
+            if status not in self.column_widgets:
+                continue
+            card = MaintenanceKanbanCard(r, on_click=self._on_card_click)
+            self.column_widgets[status].add_card(card)
+            counts[status] += 1
+
+        for name, col in self.column_widgets.items():
+            col.set_count(counts[name])
+
+    # ------------------------------------------------------------------ helpers
     def _selected_request_id(self):
         row = self.table.currentRow()
         if row < 0:
@@ -243,6 +319,7 @@ class MaintenanceScreen(QWidget):
     def _go_dashboard(self):
         self.parent_window._set_screen("dashboard")
 
+    # ------------------------------------------------------------------ handlers
     def _on_add(self):
         dlg = MaintenanceFormDialog(self, session_user=self.user_data)
         if dlg.exec():
@@ -259,21 +336,31 @@ class MaintenanceScreen(QWidget):
         if rid is None:
             QMessageBox.information(self, "No selection", "Select a request first.")
             return
+        self._open_request(rid)
+
+    def _on_row_double_click(self, index):
+        self._on_open_selected()
+
+    def _on_card_click(self, request: dict):
+        self._open_request(request.get("request_id"))
+
+    def _open_request(self, rid):
+        if not rid:
+            return
         data = self.controller.get(rid)
         if not data:
             QMessageBox.warning(self, "Error", "Request not found.")
             return
-        dlg = MaintenanceDetailDialog(self, request_data=data, session_user=self.user_data)
+        dlg = MaintenanceDetailDialog(self, request_data=data,
+                                      session_user=self.user_data)
         if dlg.exec():
             new_status = getattr(dlg, "new_status", None)
             if new_status:
-                ok, msg = self.controller.update_status(rid, new_status, self.user_data)
+                ok, msg = self.controller.update_status(rid, new_status,
+                                                        self.user_data)
                 if ok:
                     QMessageBox.information(self, "Success", msg)
                     self.refresh()
                     self.parent_window.properties_screen.refresh()
                 else:
                     QMessageBox.warning(self, "Error", msg)
-
-    def _on_row_double_click(self, index):
-        self._on_open_selected()

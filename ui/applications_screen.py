@@ -1,14 +1,20 @@
-print(">>> applications_screen.py V2 <<<")
+print(">>> applications_screen.py V3 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
-    QMessageBox, QHeaderView, QAbstractItemView, QInputDialog
+    QMessageBox, QHeaderView, QAbstractItemView, QInputDialog,
+    QScrollArea, QGridLayout, QFrame
 )
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtCore import Qt
 from Controllers.lease_application_controller import LeaseApplicationController
+from ui.widgets.entity_cards import TenantApplicationCard
 from ui import theme
+
+
+CARD_COLS = 2
+CARD_GAP = 16
 
 
 class ApplicationsScreen(QWidget):
@@ -38,14 +44,33 @@ class ApplicationsScreen(QWidget):
             "status": self.status_filter.currentText(),
         }
         rows = self.controller.list(filters, self.user_data)
-        self._populate_table(rows)
         self.count_label.setText(f"{len(rows)} application(s)")
 
+        if self.is_tenant:
+            self._populate_cards(rows)
+        else:
+            self._populate_table(rows)
+
     def _build(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        content.setStyleSheet(f"background: {theme.BG_APP};")
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(30, 26, 30, 26)
         layout.setSpacing(18)
 
+        # Header
         header = QHBoxLayout()
         header.setSpacing(12)
 
@@ -79,6 +104,7 @@ class ApplicationsScreen(QWidget):
 
         layout.addLayout(header)
 
+        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
@@ -113,6 +139,7 @@ class ApplicationsScreen(QWidget):
         )
         layout.addWidget(self.count_label)
 
+        # Table
         self.table = QTableWidget()
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
@@ -158,32 +185,35 @@ class ApplicationsScreen(QWidget):
         hv.setSectionResizeMode(6, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(10)
-        actions.addStretch()
+        # Card container (tenant)
+        self.cards_container = QWidget()
+        self.cards_container.setStyleSheet("background: transparent;")
+        self.cards_grid = QGridLayout(self.cards_container)
+        self.cards_grid.setSpacing(CARD_GAP)
+        self.cards_grid.setContentsMargins(0, 0, 0, 0)
+        self.cards_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        layout.addWidget(self.cards_container, stretch=1)
 
-        self.btn_withdraw = QPushButton("Withdraw My Application")
-        self.btn_withdraw.setCursor(Qt.PointingHandCursor)
-        self.btn_withdraw.setFixedHeight(38)
-        self.btn_withdraw.setStyleSheet(theme.button_qss("secondary"))
-        self.btn_withdraw.clicked.connect(self._on_withdraw)
-        actions.addWidget(self.btn_withdraw)
+        # Actions
+        self.actions = QHBoxLayout()
+        self.actions.setSpacing(10)
+        self.actions.addStretch()
 
         self.btn_approve = QPushButton("Approve")
         self.btn_approve.setCursor(Qt.PointingHandCursor)
         self.btn_approve.setFixedHeight(38)
         self.btn_approve.setStyleSheet(theme.button_qss("success"))
         self.btn_approve.clicked.connect(self._on_approve)
-        actions.addWidget(self.btn_approve)
+        self.actions.addWidget(self.btn_approve)
 
         self.btn_decline = QPushButton("Decline")
         self.btn_decline.setCursor(Qt.PointingHandCursor)
         self.btn_decline.setFixedHeight(38)
         self.btn_decline.setStyleSheet(theme.button_qss("danger"))
         self.btn_decline.clicked.connect(self._on_decline)
-        actions.addWidget(self.btn_decline)
+        self.actions.addWidget(self.btn_decline)
 
-        layout.addLayout(actions)
+        layout.addLayout(self.actions)
 
     def _apply_role_ui(self):
         if self.role == "Administrator":
@@ -202,9 +232,11 @@ class ApplicationsScreen(QWidget):
             self.title_label.setText("📝 Applications")
             self.readonly_badge.setVisible(False)
 
-        self.btn_withdraw.setVisible(self.is_tenant)
         self.btn_approve.setVisible(self.is_manager)
         self.btn_decline.setVisible(self.is_manager)
+
+        self.table.setVisible(not self.is_tenant)
+        self.cards_container.setVisible(self.is_tenant)
 
     def _populate_table(self, rows):
         self.table.setRowCount(0)
@@ -249,6 +281,33 @@ class ApplicationsScreen(QWidget):
                     item.setForeground(declined_fg)
                 self.table.setItem(r, c, item)
 
+    def _populate_cards(self, rows):
+        while self.cards_grid.count():
+            item = self.cards_grid.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        if not rows:
+            empty = QLabel(
+                "No applications yet.\n\n"
+                "Browse properties and click 'Apply for Lease' to get started."
+            )
+            empty.setAlignment(Qt.AlignCenter)
+            empty.setStyleSheet(
+                f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_MD}px; "
+                f"padding: 60px;"
+            )
+            self.cards_grid.addWidget(empty, 0, 0, 1, CARD_COLS)
+            return
+
+        for i, a in enumerate(rows):
+            card = TenantApplicationCard(a, on_withdraw=self._card_withdraw)
+            row = i // CARD_COLS
+            col = i % CARD_COLS
+            self.cards_grid.addWidget(card, row, col)
+
+    # ------------------------------------------------------------------ helpers
     def _selected_application(self):
         row = self.table.currentRow()
         if row < 0:
@@ -261,6 +320,7 @@ class ApplicationsScreen(QWidget):
     def _go_dashboard(self):
         self.parent_window._set_screen("dashboard")
 
+    # ------------------------------------------------------------------ handlers
     def _on_approve(self):
         if not self.is_manager:
             return
@@ -329,27 +389,17 @@ class ApplicationsScreen(QWidget):
         else:
             QMessageBox.warning(self, "Error", msg)
 
-    def _on_withdraw(self):
-        if not self.is_tenant:
-            return
-        a = self._selected_application()
-        if not a:
-            QMessageBox.information(self, "No selection", "Select an application first.")
-            return
-        if a["status"] != "Pending":
-            QMessageBox.information(self, "Cannot withdraw",
-                                    "Only pending applications can be withdrawn.")
-            return
-
+    # ---- tenant card action
+    def _card_withdraw(self, application: dict):
         confirm = QMessageBox.question(
             self, "Withdraw application",
-            f"Withdraw your application for {a['property_address']}?",
+            f"Withdraw your application for {application['property_address']}?",
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
             return
-
-        ok, msg = self.controller.withdraw(a["application_id"], self.user_data)
+        ok, msg = self.controller.withdraw(application["application_id"],
+                                            self.user_data)
         if ok:
             QMessageBox.information(self, "Withdrawn", msg)
             self.refresh()

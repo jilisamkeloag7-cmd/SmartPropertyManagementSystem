@@ -551,14 +551,14 @@ class TenantApplicationCard(QFrame):
         tracker = QHBoxLayout()
         tracker.setSpacing(0)
 
-        stages = ["Submitted", "Reviewed", "Approved", "Signed"]
+        stages = ["Submitted", "Under Review", "Approved", "Signed"]
 
         for i, name in enumerate(stages):
             col = QVBoxLayout()
             col.setSpacing(4)
 
             dot = QLabel("●")
-            if i < current_stage:
+            if i < current_stage - 1:
                 dot.setStyleSheet(f"color: {theme.SUCCESS}; font-size: 14px;")
             elif i == current_stage - 1:
                 dot.setStyleSheet(f"color: {theme.PRIMARY}; font-size: 14px;")

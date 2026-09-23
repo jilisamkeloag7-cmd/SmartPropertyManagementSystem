@@ -1,14 +1,20 @@
-print(">>> viewings_screen.py V2 <<<")
+print(">>> viewings_screen.py V3 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
-    QMessageBox, QHeaderView, QAbstractItemView, QInputDialog
+    QMessageBox, QHeaderView, QAbstractItemView, QInputDialog,
+    QScrollArea, QGridLayout, QFrame
 )
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtCore import Qt
 from Controllers.viewing_controller import ViewingController
+from ui.widgets.entity_cards import TenantViewingCard
 from ui import theme
+
+
+CARD_COLS = 2
+CARD_GAP = 16
 
 
 class ViewingsScreen(QWidget):
@@ -38,14 +44,33 @@ class ViewingsScreen(QWidget):
             "status": self.status_filter.currentText(),
         }
         rows = self.controller.list(filters, self.user_data)
-        self._populate_table(rows)
         self.count_label.setText(f"{len(rows)} viewing request(s)")
 
+        if self.is_tenant:
+            self._populate_cards(rows)
+        else:
+            self._populate_table(rows)
+
     def _build(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        content.setStyleSheet(f"background: {theme.BG_APP};")
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(30, 26, 30, 26)
         layout.setSpacing(18)
 
+        # Header
         header = QHBoxLayout()
         header.setSpacing(12)
 
@@ -79,6 +104,7 @@ class ViewingsScreen(QWidget):
 
         layout.addLayout(header)
 
+        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
@@ -113,6 +139,7 @@ class ViewingsScreen(QWidget):
         )
         layout.addWidget(self.count_label)
 
+        # Table (non-tenant)
         self.table = QTableWidget()
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
@@ -158,32 +185,35 @@ class ViewingsScreen(QWidget):
         hv.setSectionResizeMode(6, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(10)
-        actions.addStretch()
+        # Card container (tenant)
+        self.cards_container = QWidget()
+        self.cards_container.setStyleSheet("background: transparent;")
+        self.cards_grid = QGridLayout(self.cards_container)
+        self.cards_grid.setSpacing(CARD_GAP)
+        self.cards_grid.setContentsMargins(0, 0, 0, 0)
+        self.cards_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        layout.addWidget(self.cards_container, stretch=1)
 
-        self.btn_cancel = QPushButton("Cancel My Request")
-        self.btn_cancel.setCursor(Qt.PointingHandCursor)
-        self.btn_cancel.setFixedHeight(38)
-        self.btn_cancel.setStyleSheet(theme.button_qss("secondary"))
-        self.btn_cancel.clicked.connect(self._on_cancel)
-        actions.addWidget(self.btn_cancel)
+        # Actions
+        self.actions = QHBoxLayout()
+        self.actions.setSpacing(10)
+        self.actions.addStretch()
 
         self.btn_approve = QPushButton("Approve")
         self.btn_approve.setCursor(Qt.PointingHandCursor)
         self.btn_approve.setFixedHeight(38)
         self.btn_approve.setStyleSheet(theme.button_qss("success"))
         self.btn_approve.clicked.connect(self._on_approve)
-        actions.addWidget(self.btn_approve)
+        self.actions.addWidget(self.btn_approve)
 
         self.btn_decline = QPushButton("Decline")
         self.btn_decline.setCursor(Qt.PointingHandCursor)
         self.btn_decline.setFixedHeight(38)
         self.btn_decline.setStyleSheet(theme.button_qss("danger"))
         self.btn_decline.clicked.connect(self._on_decline)
-        actions.addWidget(self.btn_decline)
+        self.actions.addWidget(self.btn_decline)
 
-        layout.addLayout(actions)
+        layout.addLayout(self.actions)
 
     def _apply_role_ui(self):
         if self.role == "Administrator":
@@ -202,9 +232,11 @@ class ViewingsScreen(QWidget):
             self.title_label.setText("📅 Viewings")
             self.readonly_badge.setVisible(False)
 
-        self.btn_cancel.setVisible(self.is_tenant)
         self.btn_approve.setVisible(self.is_manager)
         self.btn_decline.setVisible(self.is_manager)
+
+        self.table.setVisible(not self.is_tenant)
+        self.cards_container.setVisible(self.is_tenant)
 
     def _populate_table(self, rows):
         self.table.setRowCount(0)
@@ -249,6 +281,34 @@ class ViewingsScreen(QWidget):
                     item.setForeground(declined_fg)
                 self.table.setItem(r, c, item)
 
+    def _populate_cards(self, rows):
+        while self.cards_grid.count():
+            item = self.cards_grid.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        if not rows:
+            empty = QLabel(
+                "No viewing requests yet.\n\n"
+                "Browse properties and click 'Request Viewing' on one "
+                "you'd like to see."
+            )
+            empty.setAlignment(Qt.AlignCenter)
+            empty.setStyleSheet(
+                f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_MD}px; "
+                f"padding: 60px;"
+            )
+            self.cards_grid.addWidget(empty, 0, 0, 1, CARD_COLS)
+            return
+
+        for i, v in enumerate(rows):
+            card = TenantViewingCard(v, on_cancel=self._card_cancel)
+            row = i // CARD_COLS
+            col = i % CARD_COLS
+            self.cards_grid.addWidget(card, row, col)
+
+    # ------------------------------------------------------------------ helpers
     def _selected_viewing(self):
         row = self.table.currentRow()
         if row < 0:
@@ -261,6 +321,7 @@ class ViewingsScreen(QWidget):
     def _go_dashboard(self):
         self.parent_window._set_screen("dashboard")
 
+    # ------------------------------------------------------------------ handlers
     def _on_approve(self):
         if not self.is_manager:
             return
@@ -269,7 +330,8 @@ class ViewingsScreen(QWidget):
             QMessageBox.information(self, "No selection", "Select a request first.")
             return
         if v["status"] != "Pending":
-            QMessageBox.information(self, "Not pending", "Only pending requests can be approved.")
+            QMessageBox.information(self, "Not pending",
+                                    "Only pending requests can be approved.")
             return
 
         note, ok = QInputDialog.getText(
@@ -296,13 +358,14 @@ class ViewingsScreen(QWidget):
             QMessageBox.information(self, "No selection", "Select a request first.")
             return
         if v["status"] != "Pending":
-            QMessageBox.information(self, "Not pending", "Only pending requests can be declined.")
+            QMessageBox.information(self, "Not pending",
+                                    "Only pending requests can be declined.")
             return
 
         reason, ok = QInputDialog.getText(
             self, "Decline viewing",
             f"Decline the viewing request from {v['tenant_name']}?\n\n"
-            f"Reason (will be sent to the tenant):"
+            f"Reason (sent to the tenant):"
         )
         if not ok or len(reason.strip()) < 3:
             return
@@ -314,29 +377,16 @@ class ViewingsScreen(QWidget):
         else:
             QMessageBox.warning(self, "Error", msg)
 
-    def _on_cancel(self):
-        if not self.is_tenant:
-            return
-        v = self._selected_viewing()
-        if not v:
-            QMessageBox.information(self, "No selection", "Select a request first.")
-            return
-        if v["status"] != "Pending":
-            QMessageBox.information(
-                self, "Cannot cancel",
-                "Only pending requests can be cancelled."
-            )
-            return
-
+    # ---- tenant card action
+    def _card_cancel(self, viewing: dict):
         confirm = QMessageBox.question(
             self, "Cancel request",
-            f"Cancel your viewing request for {v['property_address']}?",
+            f"Cancel your viewing request for {viewing['property_address']}?",
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
             return
-
-        ok, msg = self.controller.cancel(v["request_id"], self.user_data)
+        ok, msg = self.controller.cancel(viewing["request_id"], self.user_data)
         if ok:
             QMessageBox.information(self, "Cancelled", msg)
             self.refresh()
