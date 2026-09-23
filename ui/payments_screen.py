@@ -1,17 +1,24 @@
-print(">>> payments_screen.py V5 <<<")
+print(">>> payments_screen.py V6 <<<")
 
 from datetime import date
+from collections import OrderedDict
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
-    QMessageBox, QHeaderView, QAbstractItemView, QInputDialog
+    QMessageBox, QHeaderView, QAbstractItemView, QInputDialog,
+    QScrollArea, QGridLayout, QFrame
 )
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtCore import Qt
 from Controllers.payment_controller import PaymentController
 from ui.payment_form_dialog import PaymentFormDialog
 from ui.tenant_payment_dialog import TenantPaymentDialog
+from ui.widgets.entity_cards import TenantPaymentCard, MonthSectionHeader
 from ui import theme
+
+
+TENANT_CARD_COLS = 3
+CARD_GAP = 14
 
 
 class PaymentsScreen(QWidget):
@@ -20,8 +27,8 @@ class PaymentsScreen(QWidget):
         self.parent_window = parent
         self.controller = PaymentController()
         self.user_data = None
-        self.is_writer = False       # manager + admin
-        self.is_admin = False        # admin only
+        self.is_writer = False
+        self.is_admin = False
         self.is_tenant = False
         self._build()
 
@@ -47,14 +54,33 @@ class PaymentsScreen(QWidget):
             "status": self.status_filter.currentText(),
         }
         rows = self.controller.list(filters, self.user_data)
-        self._populate_table(rows)
         self.count_label.setText(f"{len(rows)} payment record(s)")
 
+        if self.is_tenant:
+            self._populate_cards(rows)
+        else:
+            self._populate_table(rows)
+
     def _build(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        content.setStyleSheet(f"background: {theme.BG_APP};")
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(30, 26, 30, 26)
         layout.setSpacing(18)
 
+        # Header
         header = QHBoxLayout()
         header.setSpacing(12)
 
@@ -95,6 +121,7 @@ class PaymentsScreen(QWidget):
 
         layout.addLayout(header)
 
+        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
@@ -129,6 +156,7 @@ class PaymentsScreen(QWidget):
         )
         layout.addWidget(self.count_label)
 
+        # ---- Table (non-tenant)
         self.table = QTableWidget()
         self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
@@ -174,11 +202,19 @@ class PaymentsScreen(QWidget):
         hv.setSectionResizeMode(7, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
+        # ---- Cards container (tenant) — vertical stack of month sections
+        self.cards_container = QWidget()
+        self.cards_container.setStyleSheet("background: transparent;")
+        self.cards_outer_layout = QVBoxLayout(self.cards_container)
+        self.cards_outer_layout.setContentsMargins(0, 0, 0, 0)
+        self.cards_outer_layout.setSpacing(24)
+        layout.addWidget(self.cards_container, stretch=1)
+
+        # Actions
         actions = QHBoxLayout()
         actions.setSpacing(10)
         actions.addStretch()
 
-        # Tenant action
         self.btn_tenant_paid = QPushButton("I've Paid This")
         self.btn_tenant_paid.setCursor(Qt.PointingHandCursor)
         self.btn_tenant_paid.setFixedHeight(38)
@@ -186,7 +222,6 @@ class PaymentsScreen(QWidget):
         self.btn_tenant_paid.clicked.connect(self._on_tenant_mark_paid)
         actions.addWidget(self.btn_tenant_paid)
 
-        # Manager + admin actions
         self.btn_confirm = QPushButton("Confirm Receipt")
         self.btn_confirm.setCursor(Qt.PointingHandCursor)
         self.btn_confirm.setFixedHeight(38)
@@ -201,7 +236,6 @@ class PaymentsScreen(QWidget):
         self.btn_reject.clicked.connect(self._on_manager_reject)
         actions.addWidget(self.btn_reject)
 
-        # Admin-only override
         self.btn_mark_paid = QPushButton("Mark Selected as Paid")
         self.btn_mark_paid.setCursor(Qt.PointingHandCursor)
         self.btn_mark_paid.setFixedHeight(38)
@@ -232,13 +266,23 @@ class PaymentsScreen(QWidget):
             self.header_title.setText("💰 Payments")
             self.readonly_badge.setVisible(False)
 
-        # Button visibility
-        self.btn_tenant_paid.setVisible(self.is_tenant)
+        self.btn_tenant_paid.setVisible(False)   # Not needed — actions live in the cards
         self.btn_add.setVisible(self.is_writer)
         self.btn_confirm.setVisible(self.is_writer)
         self.btn_reject.setVisible(self.is_writer)
-        self.btn_mark_paid.setVisible(self.is_admin)   # ← admin only
+        self.btn_mark_paid.setVisible(self.is_admin)
 
+        self.table.setVisible(not self.is_tenant)
+        self.cards_container.setVisible(self.is_tenant)
+
+        # Hide table-only actions for tenant
+        if self.is_tenant:
+            self.btn_add.setVisible(False)
+            self.btn_confirm.setVisible(False)
+            self.btn_reject.setVisible(False)
+            self.btn_mark_paid.setVisible(False)
+
+    # ------------------------------------------------------------------ table
     def _populate_table(self, rows):
         self.table.setRowCount(0)
         overdue_bg = QBrush(QColor(theme.DANGER_SOFT))
@@ -270,6 +314,71 @@ class PaymentsScreen(QWidget):
                     item.setForeground(awaiting_fg)
                 self.table.setItem(r, c, item)
 
+    # ------------------------------------------------------------------ cards
+    def _populate_cards(self, rows):
+        # Clear existing month sections
+        while self.cards_outer_layout.count():
+            item = self.cards_outer_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+            layout = item.layout()
+            if layout is not None:
+                while layout.count():
+                    sub = layout.takeAt(0)
+                    sw = sub.widget()
+                    if sw:
+                        sw.deleteLater()
+
+        if not rows:
+            empty = QLabel(
+                "No payments yet.\n\n"
+                "Once you have an active lease, payments will appear here."
+            )
+            empty.setAlignment(Qt.AlignCenter)
+            empty.setStyleSheet(
+                f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_MD}px; "
+                f"padding: 60px;"
+            )
+            self.cards_outer_layout.addWidget(empty)
+            return
+
+        # Group by month of due_date, descending
+        groups = OrderedDict()
+        for p in sorted(rows, key=lambda x: x["due_date"] or date.min, reverse=True):
+            due = p.get("due_date")
+            if not due:
+                key = "Unscheduled"
+            else:
+                key = due.strftime("%B %Y")
+            groups.setdefault(key, []).append(p)
+
+        for month, items in groups.items():
+            # Compute month summary
+            paid = sum(p["amount"] for p in items if p["status"] == "Paid")
+            billed = sum(p["amount"] for p in items)
+            summary = f"R{paid:,.0f} paid / R{billed:,.0f} billed"
+
+            header = MonthSectionHeader(month, summary)
+            self.cards_outer_layout.addWidget(header)
+
+            # Card grid for this month
+            grid = QGridLayout()
+            grid.setSpacing(CARD_GAP)
+            grid.setContentsMargins(0, 0, 0, 0)
+            grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+
+            for i, payment in enumerate(items):
+                card = TenantPaymentCard(
+                    payment, on_mark_paid=self._card_mark_paid,
+                )
+                row = i // TENANT_CARD_COLS
+                col = i % TENANT_CARD_COLS
+                grid.addWidget(card, row, col)
+
+            self.cards_outer_layout.addLayout(grid)
+
+    # ------------------------------------------------------------------ helpers
     def _selected_payment(self):
         row = self.table.currentRow()
         if row < 0:
@@ -289,6 +398,7 @@ class PaymentsScreen(QWidget):
     def _go_dashboard(self):
         self.parent_window._set_screen("dashboard")
 
+    # ------------------------------------------------------------------ table actions
     def _on_add(self):
         if not self.is_writer:
             return
@@ -311,8 +421,7 @@ class PaymentsScreen(QWidget):
         confirm = QMessageBox.question(
             self, "Mark paid directly",
             f"Mark payment #{pid} as Paid (today)?\n\n"
-            f"This bypasses the tenant confirmation workflow. "
-            f"Use only for offline/cash payments.",
+            f"This bypasses the tenant confirmation workflow.",
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
@@ -399,25 +508,11 @@ class PaymentsScreen(QWidget):
             QMessageBox.warning(self, "Error", msg)
 
     def _on_tenant_mark_paid(self):
-        if not self.is_tenant:
-            return
-        payment = self._selected_payment()
-        if not payment:
-            QMessageBox.information(self, "No selection", "Select one of your payments.")
-            return
-        if payment["status"] == "Paid":
-            QMessageBox.information(
-                self, "Already paid",
-                "This payment is already marked as paid."
-            )
-            return
-        if payment["status"] == "Awaiting Confirmation":
-            QMessageBox.information(
-                self, "Already submitted",
-                "You have already marked this payment. Awaiting manager confirmation."
-            )
-            return
+        """Legacy handler — kept for compatibility but card handles its own click."""
+        pass
 
+    # ------------------------------------------------------------------ tenant card action
+    def _card_mark_paid(self, payment: dict):
         dlg = TenantPaymentDialog(self, payment_data=payment)
         if dlg.exec():
             ok, msg = self.controller.tenant_mark_paid(

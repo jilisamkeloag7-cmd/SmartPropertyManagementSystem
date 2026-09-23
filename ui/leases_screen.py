@@ -1,18 +1,24 @@
-print(">>> leases_screen.py V5 <<<")
+print(">>> leases_screen.py V6 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
-    QMessageBox, QHeaderView, QAbstractItemView
+    QMessageBox, QHeaderView, QAbstractItemView, QScrollArea,
+    QGridLayout, QFrame
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QBrush
 from Controllers.lease_controller import LeaseController
 from ui.lease_form_dialog import LeaseFormDialog
 from ui.lease_termination_dialog import LeaseTerminationDialog
+from ui.widgets.entity_cards import TenantLeaseCard
 from ui import theme
 
 from Repositories.ownership_repository import OwnershipRepository
+
+
+TENANT_CARD_COLS = 2
+CARD_GAP = 16
 
 
 class LeasesScreen(QWidget):
@@ -51,14 +57,33 @@ class LeasesScreen(QWidget):
             uid = self.user_data.get("user_id")
             rows = [r for r in rows if r["tenant_id"] == uid]
 
-        self._populate_table(rows)
         self.count_label.setText(f"{len(rows)} lease record(s)")
 
+        if self.is_tenant:
+            self._populate_cards(rows)
+        else:
+            self._populate_table(rows)
+
     def _build(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        content.setStyleSheet(f"background: {theme.BG_APP};")
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(30, 26, 30, 26)
         layout.setSpacing(18)
 
+        # Header
         header = QHBoxLayout()
         header.setSpacing(12)
 
@@ -99,6 +124,7 @@ class LeasesScreen(QWidget):
 
         layout.addLayout(header)
 
+        # Filters
         filters_row = QHBoxLayout()
         filters_row.setSpacing(10)
 
@@ -131,6 +157,7 @@ class LeasesScreen(QWidget):
         )
         layout.addWidget(self.count_label)
 
+        # Table (non-tenant)
         self.table = QTableWidget()
         self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
@@ -175,34 +202,34 @@ class LeasesScreen(QWidget):
         hv.setSectionResizeMode(1, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(10)
-        actions.addStretch()
+        # Cards container (tenant)
+        self.cards_container = QWidget()
+        self.cards_container.setStyleSheet("background: transparent;")
+        self.cards_grid = QGridLayout(self.cards_container)
+        self.cards_grid.setSpacing(CARD_GAP)
+        self.cards_grid.setContentsMargins(0, 0, 0, 0)
+        self.cards_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        layout.addWidget(self.cards_container, stretch=1)
 
-        # Tenant action
-        self.btn_request_termination = QPushButton("Request Termination")
-        self.btn_request_termination.setCursor(Qt.PointingHandCursor)
-        self.btn_request_termination.setFixedHeight(38)
-        self.btn_request_termination.setStyleSheet(theme.button_qss("warning"))
-        self.btn_request_termination.clicked.connect(self._on_request_termination)
-        actions.addWidget(self.btn_request_termination)
+        # Actions (non-tenant)
+        self.actions_row = QHBoxLayout()
+        self.actions_row.setSpacing(10)
+        self.actions_row.addStretch()
 
-        # Manager + admin workflow actions
         self.btn_reject = QPushButton("Reject Request")
         self.btn_reject.setCursor(Qt.PointingHandCursor)
         self.btn_reject.setFixedHeight(38)
         self.btn_reject.setStyleSheet(theme.button_qss("secondary"))
         self.btn_reject.clicked.connect(self._on_reject_termination)
-        actions.addWidget(self.btn_reject)
+        self.actions_row.addWidget(self.btn_reject)
 
         self.btn_approve = QPushButton("Approve Termination")
         self.btn_approve.setCursor(Qt.PointingHandCursor)
         self.btn_approve.setFixedHeight(38)
         self.btn_approve.setStyleSheet(theme.button_qss("danger"))
         self.btn_approve.clicked.connect(self._on_approve_termination)
-        actions.addWidget(self.btn_approve)
+        self.actions_row.addWidget(self.btn_approve)
 
-        # Admin-only override
         self.btn_terminate = QPushButton("Terminate Selected")
         self.btn_terminate.setCursor(Qt.PointingHandCursor)
         self.btn_terminate.setFixedHeight(38)
@@ -211,9 +238,9 @@ class LeasesScreen(QWidget):
             "Direct termination — bypasses the tenant request workflow. Admin only."
         )
         self.btn_terminate.clicked.connect(self._on_terminate_selected)
-        actions.addWidget(self.btn_terminate)
+        self.actions_row.addWidget(self.btn_terminate)
 
-        layout.addLayout(actions)
+        layout.addLayout(self.actions_row)
 
     def _apply_role_ui(self):
         if self.role == "Administrator":
@@ -232,12 +259,16 @@ class LeasesScreen(QWidget):
             self.title_label.setText("📄 Leases")
             self.readonly_badge.setVisible(False)
 
-        # Button visibility
         self.btn_add.setVisible(self.is_writer)
-        self.btn_terminate.setVisible(self.is_admin)          # ← admin only
-        self.btn_request_termination.setVisible(self.is_tenant)
+        self.btn_terminate.setVisible(self.is_admin)
         self.btn_reject.setVisible(self.is_writer)
         self.btn_approve.setVisible(self.is_writer)
+
+        self.table.setVisible(not self.is_tenant)
+        self.cards_container.setVisible(self.is_tenant)
+        self.actions_row_visible = not self.is_tenant
+        for w in [self.btn_reject, self.btn_approve, self.btn_terminate]:
+            w.setVisible(w.isVisible() and not self.is_tenant)
 
     def _populate_table(self, rows):
         self.table.setRowCount(0)
@@ -247,7 +278,6 @@ class LeasesScreen(QWidget):
         for r, l in enumerate(rows):
             self.table.insertRow(r)
             self.table.setRowHeight(r, 42)
-
             request_pending = l.get("termination_requested", False)
             request_label = "⚠ Pending" if request_pending else "—"
 
@@ -270,14 +300,35 @@ class LeasesScreen(QWidget):
                     item.setToolTip(f"Reason: {reason}")
                 self.table.setItem(r, c, item)
 
-    def _selected_lease(self):
-        row = self.table.currentRow()
-        if row < 0:
-            return None
-        item = self.table.item(row, 0)
-        if not item:
-            return None
-        return self.controller.get(int(item.text()))
+    def _populate_cards(self, rows):
+        while self.cards_grid.count():
+            item = self.cards_grid.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        if not rows:
+            empty = QLabel(
+                "You have no active leases yet.\n\n"
+                "Browse properties and apply for one to get started."
+            )
+            empty.setAlignment(Qt.AlignCenter)
+            empty.setStyleSheet(
+                f"color: {theme.TEXT_FAINT}; font-size: {theme.FS_MD}px; "
+                f"padding: 60px;"
+            )
+            self.cards_grid.addWidget(empty, 0, 0, 1, TENANT_CARD_COLS)
+            return
+
+        for i, l in enumerate(rows):
+            card = TenantLeaseCard(l, on_request_termination=self._card_request_termination)
+            row = i // TENANT_CARD_COLS
+            col = i % TENANT_CARD_COLS
+            self.cards_grid.addWidget(card, row, col)
+
+    # ------------------------------------------------------------------ actions
+    def _go_dashboard(self):
+        self.parent_window._set_screen("dashboard")
 
     def _selected_lease_id(self):
         row = self.table.currentRow()
@@ -286,12 +337,13 @@ class LeasesScreen(QWidget):
         item = self.table.item(row, 0)
         return int(item.text()) if item else None
 
-    def _go_dashboard(self):
-        self.parent_window._set_screen("dashboard")
+    def _selected_lease(self):
+        lid = self._selected_lease_id()
+        if lid is None:
+            return None
+        return self.controller.get(lid)
 
     def _on_add(self):
-        if not self.is_writer:
-            return
         dlg = LeaseFormDialog(self)
         if dlg.exec():
             ok, msg = self.controller.create(dlg.get_data(), self.user_data)
@@ -312,8 +364,7 @@ class LeasesScreen(QWidget):
         confirm = QMessageBox.question(
             self, "Terminate lease directly",
             f"Terminate lease #{lid} directly?\n\n"
-            f"This bypasses the tenant request workflow. "
-            f"Use only for administrative decisions.",
+            f"This bypasses the tenant request workflow.",
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
@@ -325,33 +376,6 @@ class LeasesScreen(QWidget):
             self.parent_window.properties_screen.refresh()
         else:
             QMessageBox.warning(self, "Error", msg)
-
-    def _on_request_termination(self):
-        if not self.is_tenant:
-            return
-        lease = self._selected_lease()
-        if not lease:
-            QMessageBox.information(self, "No selection", "Select one of your leases.")
-            return
-        if lease["status"] != "Active":
-            QMessageBox.warning(self, "Cannot request",
-                                "Only active leases can be terminated.")
-            return
-        if lease["termination_requested"]:
-            QMessageBox.information(self, "Already pending",
-                                    "A termination request is already pending.")
-            return
-
-        dlg = LeaseTerminationDialog(self, lease_data=lease)
-        if dlg.exec():
-            ok, msg = self.controller.request_termination(
-                lease["lease_id"], dlg.get_reason(), self.user_data
-            )
-            if ok:
-                QMessageBox.information(self, "Submitted", msg)
-                self.refresh()
-            else:
-                QMessageBox.warning(self, "Error", msg)
 
     def _on_approve_termination(self):
         if not self.is_writer:
@@ -369,8 +393,7 @@ class LeasesScreen(QWidget):
         confirm = QMessageBox.question(
             self, "Approve termination",
             f"Approve termination of lease #{lease['lease_id']}?\n\n"
-            f"Tenant's reason:\n{reason}\n\n"
-            f"The lease will be terminated immediately.",
+            f"Tenant's reason:\n{reason}",
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
@@ -401,8 +424,7 @@ class LeasesScreen(QWidget):
         confirm = QMessageBox.question(
             self, "Reject termination",
             f"Reject the termination request for lease #{lease['lease_id']}?\n\n"
-            f"Tenant's reason:\n{reason}\n\n"
-            f"The lease will remain active.",
+            f"Tenant's reason:\n{reason}",
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
@@ -415,3 +437,16 @@ class LeasesScreen(QWidget):
             self.refresh()
         else:
             QMessageBox.warning(self, "Error", msg)
+
+    # ---- tenant card action
+    def _card_request_termination(self, lease: dict):
+        dlg = LeaseTerminationDialog(self, lease_data=lease)
+        if dlg.exec():
+            ok, msg = self.controller.request_termination(
+                lease["lease_id"], dlg.get_reason(), self.user_data
+            )
+            if ok:
+                QMessageBox.information(self, "Submitted", msg)
+                self.refresh()
+            else:
+                QMessageBox.warning(self, "Error", msg)
