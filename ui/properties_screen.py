@@ -1,10 +1,10 @@
-print(">>> properties_screen.py V7 <<<")
+print(">>> properties_screen.py V8 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
     QMessageBox, QHeaderView, QAbstractItemView, QScrollArea,
-    QGridLayout, QFrame
+    QGridLayout, QFrame, QInputDialog
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QBrush
@@ -58,6 +58,7 @@ class PropertiesScreen(QWidget):
         layout.setContentsMargins(30, 26, 30, 26)
         layout.setSpacing(18)
 
+        # Header
         header = QHBoxLayout()
         header.setSpacing(12)
 
@@ -96,6 +97,15 @@ class PropertiesScreen(QWidget):
         self.btn_add.clicked.connect(self._on_add)
         header.addWidget(self.btn_add)
 
+        # Owner: "Submit Property" button
+        self.btn_submit = QPushButton("+ Submit Property")
+        self.btn_submit.setCursor(Qt.PointingHandCursor)
+        self.btn_submit.setFixedHeight(36)
+        self.btn_submit.setStyleSheet(theme.button_qss("primary"))
+        self.btn_submit.clicked.connect(self._on_add)
+        self.btn_submit.setVisible(False)
+        header.addWidget(self.btn_submit)
+
         layout.addLayout(header)
 
         # Filters
@@ -111,7 +121,8 @@ class PropertiesScreen(QWidget):
 
         self.status_filter = QComboBox()
         self.status_filter.addItems(
-            ["All", "Available", "Occupied", "Under Maintenance", "Archived"]
+            ["All", "Pending Approval", "Available", "Occupied",
+             "Under Maintenance", "Rejected", "Archived"]
         )
         self.status_filter.setFixedHeight(38)
         self.status_filter.setStyleSheet(theme.input_qss())
@@ -182,6 +193,7 @@ class PropertiesScreen(QWidget):
         hv.setSectionResizeMode(5, QHeaderView.Stretch)
         layout.addWidget(self.table, stretch=1)
 
+        # Cards
         self.cards_container = QWidget()
         self.cards_container.setStyleSheet("background: transparent;")
         self.cards_grid = QGridLayout(self.cards_container)
@@ -190,6 +202,7 @@ class PropertiesScreen(QWidget):
         self.cards_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         layout.addWidget(self.cards_container, stretch=1)
 
+        # Actions
         self.actions_row = QHBoxLayout()
         self.actions_row.setSpacing(10)
         self.actions_row.addStretch()
@@ -201,6 +214,21 @@ class PropertiesScreen(QWidget):
         self.btn_edit.clicked.connect(self._on_edit_selected)
         self.actions_row.addWidget(self.btn_edit)
 
+        # Admin/Manager: approve pending submission
+        self.btn_approve = QPushButton("✓ Approve")
+        self.btn_approve.setCursor(Qt.PointingHandCursor)
+        self.btn_approve.setFixedHeight(38)
+        self.btn_approve.setStyleSheet(theme.button_qss("success"))
+        self.btn_approve.clicked.connect(self._on_approve_selected)
+        self.actions_row.addWidget(self.btn_approve)
+
+        self.btn_reject = QPushButton("✕ Reject")
+        self.btn_reject.setCursor(Qt.PointingHandCursor)
+        self.btn_reject.setFixedHeight(38)
+        self.btn_reject.setStyleSheet(theme.button_qss("danger"))
+        self.btn_reject.clicked.connect(self._on_reject_selected)
+        self.actions_row.addWidget(self.btn_reject)
+
         self.btn_archive = QPushButton("Archive Selected")
         self.btn_archive.setCursor(Qt.PointingHandCursor)
         self.btn_archive.setFixedHeight(38)
@@ -208,15 +236,24 @@ class PropertiesScreen(QWidget):
         self.btn_archive.clicked.connect(self._on_archive_selected)
         self.actions_row.addWidget(self.btn_archive)
 
+        # Owner: withdraw pending submission
+        self.btn_withdraw = QPushButton("Withdraw Submission")
+        self.btn_withdraw.setCursor(Qt.PointingHandCursor)
+        self.btn_withdraw.setFixedHeight(38)
+        self.btn_withdraw.setStyleSheet(theme.button_qss("danger"))
+        self.btn_withdraw.clicked.connect(self._on_withdraw_selected)
+        self.actions_row.addWidget(self.btn_withdraw)
+
         layout.addLayout(self.actions_row)
 
+    # ------------------------------------------------------------------ refresh
     def _refresh_all(self):
         is_admin_like = self.role in ("Administrator", "Property Manager")
         is_owner = self.role == "Owner"
         is_tenant = self.role == "Tenant"
         is_guest = self.role == "Guest"
 
-        # Title + badge
+        # Title / badge
         if is_admin_like:
             self.title_label.setText("🏠 All Properties")
             self.readonly_badge.setVisible(False)
@@ -233,15 +270,14 @@ class PropertiesScreen(QWidget):
             self.title_label.setText("🏠 Properties")
             self.readonly_badge.setVisible(False)
 
-        # Dashboard button hidden for guest (no dashboard to go back to)
         self.btn_dashboard.setVisible(not is_guest)
-
-        # Role-aware widget visibility
         self.btn_add.setVisible(is_admin_like)
-        self.table.setVisible(is_admin_like)
-        self.cards_container.setVisible(is_owner or is_tenant or is_guest)
-        self.btn_edit.setVisible(is_admin_like)
+        self.btn_submit.setVisible(is_owner)
+        self.table.setVisible(is_admin_like or is_owner)
+        self.cards_container.setVisible(is_tenant or is_guest)
+        self.btn_edit.setVisible(is_admin_like or is_owner)
         self.btn_archive.setVisible(is_admin_like)
+        self.btn_withdraw.setVisible(is_owner)
 
         # Data
         filters = {
@@ -258,27 +294,37 @@ class PropertiesScreen(QWidget):
             uid = self.user_data.get("user_id")
             leases = LeaseRepository().list_for_tenant(uid)
             leased_pids = {l.property_id for l in leases if l.status == "Active"}
+            # Tenants do not see pending/rejected properties
             rows = [
                 r for r in rows
-                if r["property_id"] in leased_pids or r["status"] == "Available"
+                if r["status"] not in ("Pending Approval", "Rejected")
+                and (r["property_id"] in leased_pids or r["status"] == "Available")
             ]
             rows.sort(key=lambda r: (
                 0 if r["property_id"] in leased_pids else 1,
                 r["property_id"],
             ))
         elif is_guest:
-            # Guests only see Available properties
             rows = [r for r in rows if r["status"] == "Available"]
 
         self.count_label.setText(f"{len(rows)} propert(y/ies)")
 
-        if is_admin_like:
-            self._populate_table(rows)
+        if is_admin_like or is_owner:
+            self._populate_table(rows, is_owner=is_owner)
         else:
             self._populate_cards(rows, is_tenant=is_tenant)
 
-    def _populate_table(self, rows):
+        # Show approve/reject only when a pending row is selected
+        self._update_approval_buttons_visibility()
+
+    # ------------------------------------------------------------------ table
+    def _populate_table(self, rows, is_owner=False):
         self.table.setRowCount(0)
+        pending_bg = QBrush(QColor(theme.WARNING_SOFT))
+        pending_fg = QBrush(QColor(theme.WARNING_HOVER))
+        rejected_bg = QBrush(QColor(theme.DANGER_SOFT))
+        rejected_fg = QBrush(QColor(theme.DANGER_HOVER))
+
         for r, p in enumerate(rows):
             self.table.insertRow(r)
             self.table.setRowHeight(r, 42)
@@ -286,18 +332,29 @@ class PropertiesScreen(QWidget):
             price = p.get("listing_price")
             price_str = f"R{price:,.2f}" if price is not None else "—"
 
-            self.table.setItem(r, 0, QTableWidgetItem(str(p["property_id"])))
-            self.table.setItem(r, 1, QTableWidgetItem(p["address"] or ""))
-            self.table.setItem(r, 2, QTableWidgetItem(p["property_type"] or ""))
-            self.table.setItem(r, 3, QTableWidgetItem(p["status"] or ""))
+            cells = [
+                str(p["property_id"]),
+                p["address"] or "",
+                p["property_type"] or "",
+                p["status"] or "",
+                price_str,
+                p["build_details"] or "",
+            ]
+            status = p["status"]
+            for c, text in enumerate(cells):
+                item = QTableWidgetItem(text)
+                if c == 4 and price is not None:
+                    item.setForeground(QBrush(QColor(theme.PRIMARY)))
+                if status == "Pending Approval":
+                    item.setBackground(pending_bg)
+                    item.setForeground(pending_fg)
+                elif status == "Rejected":
+                    item.setBackground(rejected_bg)
+                    item.setForeground(rejected_fg)
+                self.table.setItem(r, c, item)
 
-            price_item = QTableWidgetItem(price_str)
-            if price is not None:
-                price_item.setForeground(QBrush(QColor(theme.PRIMARY)))
-            self.table.setItem(r, 4, price_item)
-            self.table.setItem(r, 5, QTableWidgetItem(p["build_details"] or ""))
-
-    def _populate_cards(self, rows, is_tenant: bool):
+    # ------------------------------------------------------------------ cards
+    def _populate_cards(self, rows, is_tenant=False):
         while self.cards_grid.count():
             item = self.cards_grid.takeAt(0)
             w = item.widget()
@@ -321,12 +378,11 @@ class PropertiesScreen(QWidget):
 
     def _on_card_click(self, property_data):
         dlg = PropertyDetailDialog(
-            self,
-            property_data=property_data,
-            session_user=self.user_data,
+            self, property_data=property_data, session_user=self.user_data,
         )
         dlg.exec()
 
+    # ------------------------------------------------------------------ helpers
     def _selected_property_id(self):
         row = self.table.currentRow()
         if row < 0:
@@ -334,6 +390,22 @@ class PropertiesScreen(QWidget):
         item = self.table.item(row, 0)
         return int(item.text()) if item else None
 
+    def _selected_status(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+        item = self.table.item(row, 3)
+        return item.text() if item else None
+
+    def _update_approval_buttons_visibility(self):
+        """Show approve/reject only for admin-like roles on a pending row."""
+        is_admin_like = self.role in ("Administrator", "Property Manager")
+        status = self._selected_status()
+        show = is_admin_like and status == "Pending Approval"
+        self.btn_approve.setVisible(show)
+        self.btn_reject.setVisible(show)
+
+    # ------------------------------------------------------------------ handlers
     def _go_dashboard(self):
         self.parent_window._set_screen("dashboard")
 
@@ -341,7 +413,12 @@ class PropertiesScreen(QWidget):
         dlg = PropertyFormDialog(self, property_data=None,
                                  session_user=self.user_data)
         if dlg.exec():
-            ok, msg = self.controller.create(dlg.get_data(), self.user_data)
+            data = dlg.get_data()
+            # Route based on role
+            if self.role == "Owner":
+                ok, msg = self.controller.owner_submit(data, self.user_data)
+            else:
+                ok, msg = self.controller.create(data, self.user_data)
             if ok:
                 QMessageBox.information(self, "Success", msg)
                 self._refresh_all()
@@ -360,12 +437,45 @@ class PropertiesScreen(QWidget):
         dlg = PropertyFormDialog(self, property_data=data,
                                  session_user=self.user_data)
         if dlg.exec():
-            ok, msg = self.controller.update(pid, dlg.get_data(), self.user_data)
+            form_data = dlg.get_data()
+            if self.role == "Owner":
+                ok, msg = self.controller.owner_update(pid, form_data, self.user_data)
+            else:
+                ok, msg = self.controller.update(pid, form_data, self.user_data)
             if ok:
                 QMessageBox.information(self, "Success", msg)
                 self._refresh_all()
             else:
                 QMessageBox.warning(self, "Error", msg)
+
+    def _on_approve_selected(self):
+        pid = self._selected_property_id()
+        if pid is None:
+            return
+        ok, msg = self.controller.approve(pid, self.user_data)
+        if ok:
+            QMessageBox.information(self, "Approved", msg)
+            self._refresh_all()
+        else:
+            QMessageBox.warning(self, "Error", msg)
+
+    def _on_reject_selected(self):
+        pid = self._selected_property_id()
+        if pid is None:
+            return
+        reason, ok = QInputDialog.getText(
+            self, "Reject property",
+            f"Reject property submission #{pid}?\n\n"
+            f"Reason (sent to the owner):"
+        )
+        if not ok or len(reason.strip()) < 3:
+            return
+        ok, msg = self.controller.reject(pid, reason, self.user_data)
+        if ok:
+            QMessageBox.information(self, "Rejected", msg)
+            self._refresh_all()
+        else:
+            QMessageBox.warning(self, "Error", msg)
 
     def _on_archive_selected(self):
         pid = self._selected_property_id()
@@ -386,5 +496,25 @@ class PropertiesScreen(QWidget):
         else:
             QMessageBox.warning(self, "Error", msg)
 
+    def _on_withdraw_selected(self):
+        pid = self._selected_property_id()
+        if pid is None:
+            QMessageBox.information(self, "No selection", "Select one of your submissions.")
+            return
+        confirm = QMessageBox.question(
+            self, "Withdraw submission",
+            f"Withdraw your property submission #{pid}?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        ok, msg = self.controller.owner_withdraw(pid, self.user_data)
+        if ok:
+            QMessageBox.information(self, "Withdrawn", msg)
+            self._refresh_all()
+        else:
+            QMessageBox.warning(self, "Error", msg)
+
     def _on_row_double_click(self, index):
         self._on_edit_selected()
+        self._update_approval_buttons_visibility()

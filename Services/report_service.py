@@ -1,8 +1,9 @@
-print(">>> report_service.py V2 <<<")
+print(">>> report_service.py V3 <<<")
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
@@ -15,6 +16,8 @@ from Repositories.property_repository import PropertyRepository
 from Repositories.lease_repository import LeaseRepository
 from Repositories.payment_repository import PaymentRepository
 from Repositories.maintenance_repository import MaintenanceRepository
+from Repositories.ownership_repository import OwnershipRepository
+from Repositories.user_repository import UserRepository
 
 
 def _reports_dir():
@@ -34,28 +37,33 @@ class ReportService:
         self.leases = LeaseRepository()
         self.payments = PaymentRepository()
         self.maintenance = MaintenanceRepository()
+        self.ownerships = OwnershipRepository()
+        self.users = UserRepository()
         os.makedirs(REPORTS_DIR, exist_ok=True)
 
-    # ------------------------------------------------------------------ public
+    # ==================================================================
+    # ADMIN / MANAGER REPORTS (whole system)
+    # ==================================================================
     def generate_property_report(self):
         rows = self.properties.list_all()
-        headers = ["ID", "Address", "Type", "Status", "Build Details"]
+        headers = ["ID", "Address", "Type", "Status", "Price", "Build Details"]
         data = [[
             str(p.property_id),
             p.address or "",
             p.property_type or "",
             p.status or "",
+            f"R{p.listing_price:,.2f}" if p.listing_price else "—",
             (p.build_details or "")[:60],
         ] for p in rows]
         return self._build_pdf("Property Report", headers, data)
 
     def generate_payment_report(self):
         rows = self.payments.list_all()
-        headers = ["ID", "Lease", "Amount", "Due", "Paid", "Status"]
+        headers = ["ID", "Lease", "Amount (R)", "Due", "Paid", "Status"]
         data = [[
             str(p.payment_id),
             str(p.lease_id),
-            f"R{p.amount:.2f}" if p.amount is not None else "",
+            f"{p.amount:,.2f}" if p.amount is not None else "",
             str(p.due_date) if p.due_date else "",
             str(p.paid_date) if p.paid_date else "—",
             p.status or "",
@@ -64,14 +72,14 @@ class ReportService:
 
     def generate_lease_report(self):
         rows = self.leases.list_all()
-        headers = ["ID", "Property", "Tenant", "Start", "End", "Rent", "Status"]
+        headers = ["ID", "Property", "Tenant", "Start", "End", "Rent (R)", "Status"]
         data = [[
             str(l.lease_id),
             str(l.property_id),
             str(l.tenant_id),
             str(l.start_date) if l.start_date else "",
             str(l.end_date) if l.end_date else "",
-            f"R{l.rent_amount:.2f}" if l.rent_amount is not None else "",
+            f"{l.rent_amount:,.2f}" if l.rent_amount is not None else "",
             l.status or "",
         ] for l in rows]
         return self._build_pdf("Lease Report", headers, data)
@@ -112,11 +120,118 @@ class ReportService:
         ]
         return self._build_pdf("Executive Summary Report", headers, data)
 
-    # ------------------------------------------------------------------ internals
+    # ==================================================================
+    # OWNER REPORTS (scoped to owned properties)
+    # ==================================================================
+    def _owner_scope(self, session_user: dict):
+        """Return (owned_property_ids, owned_properties, leases, payments) for owner."""
+        uid = session_user.get("user_id")
+        owned_pids = set(self.ownerships.property_ids_for_owner(uid))
+
+        properties = [p for p in self.properties.list_all()
+                      if p.property_id in owned_pids]
+        leases = [l for l in self.leases.list_all()
+                  if l.property_id in owned_pids]
+        lease_ids = {l.lease_id for l in leases}
+        payments = [p for p in self.payments.list_all()
+                    if p.lease_id in lease_ids]
+
+        return owned_pids, properties, leases, payments
+
+    def generate_owner_summary(self, session_user: dict):
+        """Portfolio summary — counts, occupancy, income at a glance."""
+        _, properties, leases, payments = self._owner_scope(session_user)
+
+        active_leases = [l for l in leases if l.status == "Active"]
+        occupied = sum(1 for p in properties if p.status == "Occupied")
+        available = sum(1 for p in properties if p.status == "Available")
+        maintenance = sum(1 for p in properties if p.status == "Under Maintenance")
+        occupancy_pct = (occupied / len(properties) * 100) if properties else 0.0
+
+        total_paid = sum(p.amount for p in payments if p.status == "Paid")
+        total_pending = sum(p.amount for p in payments if p.status == "Pending")
+        total_overdue = sum(p.amount for p in payments if p.status == "Overdue")
+
+        headers = ["Metric", "Value"]
+        data = [
+            ["Total Owned Properties",   str(len(properties))],
+            ["Occupied",                 str(occupied)],
+            ["Available",                str(available)],
+            ["Under Maintenance",        str(maintenance)],
+            ["Occupancy Rate",           f"{occupancy_pct:.1f}%"],
+            ["Active Leases",            str(len(active_leases))],
+            ["Total Rent Collected",     f"R{total_paid:,.2f}"],
+            ["Total Rent Pending",       f"R{total_pending:,.2f}"],
+            ["Total Rent Overdue",       f"R{total_overdue:,.2f}"],
+            ["Net Position (Paid-Owed)", f"R{total_paid - total_overdue:,.2f}"],
+        ]
+        title = f"Portfolio Summary — {session_user.get('name','Owner')}"
+        return self._build_pdf(title, headers, data)
+
+    def generate_owner_income(self, session_user: dict, months_back: int = 12):
+        """Month-by-month income from payments on owned properties."""
+        _, _, _, payments = self._owner_scope(session_user)
+
+        today = date.today()
+        headers = ["Month", "Paid (R)", "Pending (R)", "Overdue (R)", "Total Billed (R)"]
+        data = []
+
+        for i in range(months_back - 1, -1, -1):
+            month_start = today.replace(day=1) - relativedelta(months=i)
+            month_end = month_start + relativedelta(months=1)
+            month_label = month_start.strftime("%Y-%m")
+
+            monthly = [
+                p for p in payments
+                if p.due_date and month_start <= p.due_date < month_end
+            ]
+            paid = sum(p.amount for p in monthly if p.status == "Paid")
+            pending = sum(p.amount for p in monthly if p.status == "Pending")
+            overdue = sum(p.amount for p in monthly if p.status == "Overdue")
+            total = paid + pending + overdue
+            data.append([
+                month_label,
+                f"{paid:,.2f}",
+                f"{pending:,.2f}",
+                f"{overdue:,.2f}",
+                f"{total:,.2f}",
+            ])
+
+        title = f"Owner Income Report — {session_user.get('name','Owner')}"
+        return self._build_pdf(title, headers, data)
+
+    def generate_owner_tenants(self, session_user: dict):
+        """Every lease on an owned property with tenant + rent details."""
+        _, properties, leases, _ = self._owner_scope(session_user)
+
+        prop_by_id = {p.property_id: p for p in properties}
+        user_by_id = {u.user_id: u for u in self.users.list_all()}
+
+        headers = ["Property", "Tenant", "Email", "Start", "End", "Rent (R)", "Status"]
+        data = []
+        for l in leases:
+            prop = prop_by_id.get(l.property_id)
+            tenant = user_by_id.get(l.tenant_id)
+            data.append([
+                (prop.address if prop else f"#{l.property_id}")[:40],
+                (tenant.name if tenant else "")[:25],
+                (tenant.email if tenant else "")[:30],
+                str(l.start_date) if l.start_date else "",
+                str(l.end_date) if l.end_date else "",
+                f"{l.rent_amount:,.2f}" if l.rent_amount else "—",
+                l.status or "",
+            ])
+
+        title = f"Owner Tenants Report — {session_user.get('name','Owner')}"
+        return self._build_pdf(title, headers, data)
+
+    # ==================================================================
+    # PDF BUILDER
+    # ==================================================================
     def _build_pdf(self, title, headers, data):
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_title = title.replace(" ", "_")
+            safe_title = title.replace(" ", "_").replace("—", "-").replace(":", "")
             filename = f"{safe_title}_{timestamp}.pdf"
             filepath = os.path.join(REPORTS_DIR, filename)
 

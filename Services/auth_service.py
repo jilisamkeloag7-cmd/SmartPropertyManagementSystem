@@ -1,4 +1,4 @@
-print(">>> auth_service.py V3 <<<")
+print(">>> auth_service.py V4 <<<")
 
 from Repositories.user_repository import UserRepository
 from Services.security import (hash_password, verify_password,
@@ -15,10 +15,12 @@ _ROLE_LOOKUP = {
     "User":              UserRole.TENANT,
 }
 
-# Roles a user can self-register for via the public registration form
+# Roles a user can self-register for via the public registration form.
+# Values: (role_enum, requires_approval?)
 SELF_REGISTER_ROLES = {
-    "Tenant": UserRole.TENANT,
-    "Owner":  UserRole.OWNER,
+    "Tenant":            (UserRole.TENANT,  False),
+    "Owner":             (UserRole.OWNER,   False),
+    "Property Manager":  (UserRole.MANAGER, True),   # needs admin approval
 }
 
 
@@ -41,7 +43,10 @@ class AuthService:
             return False, None, "This account has been deactivated."
 
         if user.status == "Pending Approval":
-            return False, None, "This account is awaiting administrator approval."
+            return False, None, (
+                "This account is awaiting administrator approval. "
+                "You'll be able to log in once it has been approved."
+            )
 
         if not verify_password(password, user.password_hash):
             return False, None, "Incorrect password."
@@ -60,7 +65,7 @@ class AuthService:
         }
         return True, user_dict, None
 
-    # ------------------------------------------------------------------ register (admin-only, legacy)
+    # ------------------------------------------------------------------ admin register (legacy)
     def register(self, id_number, name, email, phone, password, role: UserRole):
         if self.users.find_by_email(email):
             return False, "An account with that email already exists."
@@ -77,11 +82,6 @@ class AuthService:
     # ------------------------------------------------------------------ self-registration
     def register_self(self, id_number, name, email, phone, password,
                       role_str, security_question, security_answer):
-        """
-        Public self-registration for Tenant and Owner.
-        Creates an Active account and stores the security question for recovery.
-        """
-        # ---- Validate
         name = (name or "").strip()
         id_number = (id_number or "").strip()
         email = (email or "").strip().lower()
@@ -97,7 +97,7 @@ class AuthService:
         if len(password) < 6:
             return False, "Password must be at least 6 characters."
         if role_str not in SELF_REGISTER_ROLES:
-            return False, "You can only register as a Tenant or Owner."
+            return False, "You can only register as a Tenant, Owner or Property Manager."
 
         if not security_question:
             return False, "Please choose a security question."
@@ -109,23 +109,31 @@ class AuthService:
         if self.users.find_by_id_number(id_number):
             return False, "An account with that ID number already exists."
 
+        role_enum, requires_approval = SELF_REGISTER_ROLES[role_str]
+        status = "Pending Approval" if requires_approval else "Active"
+
         user = User(
             id_number=id_number,
             name=name,
             email=email,
             phone=phone,
             password_hash=hash_password(password),
-            role=SELF_REGISTER_ROLES[role_str],
-            status="Active",
+            role=role_enum,
+            status=status,
             security_question=security_question,
             security_answer_hash=hash_answer(security_answer),
         )
-        created = self.users.create(user)
-        return True, f"Account created. Welcome, {created.name}!"
+        self.users.create(user)
+
+        if requires_approval:
+            return True, (
+                f"Application submitted. A manager or administrator will review "
+                f"your account before you can log in."
+            )
+        return True, f"Account created. Welcome, {user.name}!"
 
     # ------------------------------------------------------------------ forgot password
     def get_security_question(self, email: str):
-        """Step 1 of recovery: return the question (or None)."""
         if not email:
             return None
         user = self.users.find_by_email(email.strip())
@@ -134,7 +142,6 @@ class AuthService:
         return user.security_question
 
     def verify_security_answer(self, email: str, answer: str):
-        """Step 2 of recovery: verify the answer."""
         user = self.users.find_by_email(email.strip())
         if not user or not user.security_answer_hash:
             return False, "This account has no security question configured."
@@ -143,7 +150,6 @@ class AuthService:
         return True, "Verified."
 
     def reset_password(self, email: str, answer: str, new_password: str):
-        """Step 3 of recovery: verify once more, then change password."""
         if len(new_password or "") < 6:
             return False, "New password must be at least 6 characters."
 

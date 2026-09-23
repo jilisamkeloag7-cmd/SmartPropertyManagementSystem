@@ -1,4 +1,4 @@
-print(">>> reports_screen.py V2 <<<")
+print(">>> reports_screen.py V3 <<<")
 
 import os
 import subprocess
@@ -12,12 +12,23 @@ from Controllers.report_controller import ReportController
 from ui import theme
 
 
-REPORTS = [
+# (icon, name, description, key) for admin/manager
+ADMIN_REPORTS = [
     ("📊", "Executive Summary",  "High-level counts across all entities",  "summary"),
     ("🏠", "Property Report",    "Full list of properties with status",    "property"),
     ("📄", "Lease Report",       "All leases with dates, rent and status", "lease"),
     ("💰", "Payment Report",     "All payments with due/paid and status",  "payment"),
     ("🔧", "Maintenance Report", "All maintenance requests with priority", "maintenance"),
+]
+
+# Owner reports
+OWNER_REPORTS = [
+    ("📊", "Portfolio Summary",
+     "Occupancy, income and net position across your properties", "owner_summary"),
+    ("💰", "Income Report",
+     "Month-by-month rent collected, pending and overdue",         "owner_income"),
+    ("👥", "My Tenants",
+     "All tenants currently or previously leasing your properties", "owner_tenants"),
 ]
 
 
@@ -27,12 +38,17 @@ class ReportsScreen(QWidget):
         self.parent_window = parent
         self.controller = ReportController()
         self.user_data = None
+        self.role = ""
         self._build()
 
+    # ------------------------------------------------------------------ API
     def set_user(self, user_data: dict):
-        self.user_data = user_data
+        self.user_data = user_data or {}
+        self.role = self.user_data.get("role", "")
+        self._apply_role_ui()
         self._load_recent()
 
+    # ------------------------------------------------------------------ UI
     def _build(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 26, 30, 26)
@@ -41,11 +57,11 @@ class ReportsScreen(QWidget):
         header = QHBoxLayout()
         header.setSpacing(12)
 
-        title = QLabel("📊 Reports")
-        title.setStyleSheet(
+        self.title_label = QLabel("📊 Reports")
+        self.title_label.setStyleSheet(
             f"font-size: {theme.FS_2XL}px; font-weight: bold; color: {theme.TEXT_MAIN};"
         )
-        header.addWidget(title)
+        header.addWidget(self.title_label)
         header.addStretch()
 
         btn_dashboard = QPushButton("← Dashboard")
@@ -57,37 +73,19 @@ class ReportsScreen(QWidget):
 
         layout.addLayout(header)
 
-        subtitle = QLabel(
-            "Generate PDF reports. Files are saved to Documentation/reports/ "
-            "in your project folder."
-        )
-        subtitle.setStyleSheet(
+        self.subtitle = QLabel("")
+        self.subtitle.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
         )
-        layout.addWidget(subtitle)
+        self.subtitle.setWordWrap(True)
+        layout.addWidget(self.subtitle)
 
         layout.addSpacing(6)
 
-        grid = QHBoxLayout()
-        grid.setSpacing(16)
-
-        left_col = QVBoxLayout()
-        left_col.setSpacing(14)
-        right_col = QVBoxLayout()
-        right_col.setSpacing(14)
-
-        for idx, (icon, name, desc, key) in enumerate(REPORTS):
-            card = self._build_card(icon, name, desc, key)
-            if idx % 2 == 0:
-                left_col.addWidget(card)
-            else:
-                right_col.addWidget(card)
-
-        left_col.addStretch()
-        right_col.addStretch()
-        grid.addLayout(left_col, stretch=1)
-        grid.addLayout(right_col, stretch=1)
-        layout.addLayout(grid)
+        # Report cards grid (rebuilt per role)
+        self.cards_layout = QHBoxLayout()
+        self.cards_layout.setSpacing(16)
+        layout.addLayout(self.cards_layout)
 
         layout.addSpacing(14)
 
@@ -104,6 +102,54 @@ class ReportsScreen(QWidget):
         self.recent_layout.setSpacing(6)
         layout.addWidget(self.recent_frame, stretch=1)
 
+    # ------------------------------------------------------------------ role UI
+    def _apply_role_ui(self):
+        # Clear existing cards
+        while self.cards_layout.count():
+            item = self.cards_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+            layout = item.layout()
+            if layout is not None:
+                while layout.count():
+                    sub = layout.takeAt(0)
+                    sw = sub.widget()
+                    if sw:
+                        sw.deleteLater()
+
+        if self.role == "Owner":
+            self.title_label.setText("📊 Owner Reports")
+            self.subtitle.setText(
+                "Generate PDF reports for your portfolio. Files are saved to "
+                "Documentation/reports/ in your project folder."
+            )
+            reports = OWNER_REPORTS
+        else:
+            self.title_label.setText("📊 Reports")
+            self.subtitle.setText(
+                "Generate system-wide PDF reports. Files are saved to "
+                "Documentation/reports/ in your project folder."
+            )
+            reports = ADMIN_REPORTS
+
+        left_col = QVBoxLayout()
+        left_col.setSpacing(12)
+        right_col = QVBoxLayout()
+        right_col.setSpacing(12)
+
+        for idx, (icon, name, desc, key) in enumerate(reports):
+            card = self._build_card(icon, name, desc, key)
+            if idx % 2 == 0:
+                left_col.addWidget(card)
+            else:
+                right_col.addWidget(card)
+
+        left_col.addStretch()
+        right_col.addStretch()
+        self.cards_layout.addLayout(left_col, stretch=1)
+        self.cards_layout.addLayout(right_col, stretch=1)
+
     def _build_card(self, icon, name, desc, key):
         card = QFrame()
         card.setStyleSheet(f"""
@@ -112,6 +158,7 @@ class ReportsScreen(QWidget):
                 border-radius: {theme.RADIUS_LG}px;
                 border: 1px solid {theme.BORDER};
             }}
+            QFrame:hover {{ border-color: {theme.PRIMARY}; }}
         """)
         card.setMinimumHeight(96)
 
@@ -153,6 +200,7 @@ class ReportsScreen(QWidget):
 
         return card
 
+    # ------------------------------------------------------------------ recent
     def _load_recent(self):
         while self.recent_layout.count():
             item = self.recent_layout.takeAt(0)
@@ -199,21 +247,32 @@ class ReportsScreen(QWidget):
 
         self.recent_layout.addStretch()
 
+    # ------------------------------------------------------------------ handlers
     def _go_dashboard(self):
         self.parent_window._set_screen("dashboard")
+
     def _on_generate(self, key: str):
-        generators = {
-            "summary":     self.controller.generate_summary,
-            "property":    self.controller.generate_property,
-            "lease":       self.controller.generate_lease,
-            "payment":     self.controller.generate_payment,
-            "maintenance": self.controller.generate_maintenance,
-        }
-        gen = generators.get(key)
-        if not gen:
+        user = self.user_data or {}
+
+        if key == "summary":
+            ok, result = self.controller.generate_summary()
+        elif key == "property":
+            ok, result = self.controller.generate_property()
+        elif key == "lease":
+            ok, result = self.controller.generate_lease()
+        elif key == "payment":
+            ok, result = self.controller.generate_payment()
+        elif key == "maintenance":
+            ok, result = self.controller.generate_maintenance()
+        elif key == "owner_summary":
+            ok, result = self.controller.generate_owner_summary(user)
+        elif key == "owner_income":
+            ok, result = self.controller.generate_owner_income(user)
+        elif key == "owner_tenants":
+            ok, result = self.controller.generate_owner_tenants(user)
+        else:
             return
 
-        ok, result = gen()
         if not ok:
             QMessageBox.warning(self, "Error", result)
             return

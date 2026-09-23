@@ -1,4 +1,4 @@
-print(">>> register_dialog.py V1 <<<")
+print(">>> register_dialog.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
@@ -19,13 +19,11 @@ SECURITY_QUESTIONS = [
 
 
 class RegisterDialog(QDialog):
-    """Public registration for Tenant and Owner roles."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.auth = AuthController()
         self.setWindowTitle("Create Account")
-        self.setFixedSize(560, 700)
+        self.setFixedSize(560, 740)
         self.setStyleSheet(f"""
             QDialog {{ background: {theme.BG_APP}; }}
             QLabel {{ color: {theme.TEXT_MAIN}; font-size: {theme.FS_BASE}px; }}
@@ -45,8 +43,8 @@ class RegisterDialog(QDialog):
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Register as a Tenant to apply for leases, or as an Owner to list "
-            "your properties."
+            "Register as a Tenant to apply for leases, an Owner to list "
+            "properties, or a Property Manager to manage listings."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -59,10 +57,24 @@ class RegisterDialog(QDialog):
         form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
         self.role_combo = QComboBox()
-        self.role_combo.addItems(["Tenant", "Owner"])
+        self.role_combo.addItems(["Tenant", "Owner", "Property Manager"])
         self.role_combo.setFixedHeight(40)
         self.role_combo.setStyleSheet(theme.input_qss())
+        self.role_combo.currentTextChanged.connect(self._on_role_changed)
         form.addRow(self._label("I want to register as"), self.role_combo)
+
+        # Role note (dynamic per selection)
+        self.role_note = QLabel("")
+        self.role_note.setWordWrap(True)
+        self.role_note.setStyleSheet(f"""
+            color: {theme.INFO};
+            background: {theme.INFO_SOFT};
+            padding: 8px 10px;
+            border-radius: {theme.RADIUS_SM}px;
+            font-size: {theme.FS_XS}px;
+        """)
+        form.addRow("", self.role_note)
+        self._on_role_changed("Tenant")
 
         self.name = QLineEdit()
         self.name.setPlaceholderText("Full name")
@@ -104,7 +116,6 @@ class RegisterDialog(QDialog):
 
         layout.addLayout(form)
 
-        # ---- Security question block
         sec_lbl = QLabel("Account Recovery")
         sec_lbl.setStyleSheet(
             f"font-size: {theme.FS_MD}px; font-weight: bold; "
@@ -166,6 +177,23 @@ class RegisterDialog(QDialog):
             f"font-size: {theme.FS_SM}px; font-weight: bold;"
         )
         return lbl
+
+    def _on_role_changed(self, role):
+        notes = {
+            "Tenant": (
+                "You can browse properties, apply for leases, and submit "
+                "maintenance requests once you have a lease."
+            ),
+            "Owner": (
+                "You can submit properties for approval and see reports on "
+                "your portfolio once they're live."
+            ),
+            "Property Manager": (
+                "⚠  Manager accounts require administrator approval. "
+                "You will not be able to log in until your account is approved."
+            ),
+        }
+        self.role_note.setText(notes.get(role, ""))
 
     def _on_accept(self):
         if self.password.text() != self.password2.text():

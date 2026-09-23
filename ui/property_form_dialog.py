@@ -1,4 +1,4 @@
-print(">>> property_form_dialog.py V4 <<<")
+print(">>> property_form_dialog.py V5 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox,
@@ -18,6 +18,8 @@ class PropertyFormDialog(QDialog):
         super().__init__(parent)
         self.property_data = property_data or {}
         self.session_user = session_user or {}
+        self.role = self.session_user.get("role", "")
+        self.is_owner = self.role == "Owner"
         self.is_edit = bool(property_data and property_data.get("property_id"))
         self.setWindowTitle("Edit Property" if self.is_edit else "Add Property")
         self.setFixedSize(500, 620)
@@ -32,17 +34,27 @@ class PropertyFormDialog(QDialog):
         layout.setContentsMargins(28, 26, 28, 26)
         layout.setSpacing(14)
 
-        title = QLabel("Edit Property" if self.is_edit else "Add Property")
+        title_text = "Edit Property" if self.is_edit else (
+            "Submit Property" if self.is_owner else "Add Property"
+        )
+        title = QLabel(title_text)
         title.setStyleSheet(
             f"font-size: {theme.FS_XL}px; font-weight: bold; "
             f"color: {theme.TEXT_MAIN};"
         )
         layout.addWidget(title)
 
-        subtitle = QLabel(
-            "Update the fields below" if self.is_edit
-            else "Fill in the property details. Save first, then add images."
-        )
+        if self.is_owner:
+            subtitle = QLabel(
+                "Your submission will be reviewed by a manager before it goes "
+                "live. Save first, then add images."
+            )
+        else:
+            subtitle = QLabel(
+                "Update the fields below" if self.is_edit
+                else "Fill in the property details. Save first, then add images."
+            )
+        subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_SM}px;"
         )
@@ -67,13 +79,17 @@ class PropertyFormDialog(QDialog):
         self.ptype.setStyleSheet(theme.input_qss())
         form.addRow(self._label("Property Type"), self.ptype)
 
-        self.status = QComboBox()
-        self.status.setFixedHeight(40)
-        self.status.addItems(STATUSES)
-        if self.property_data.get("status"):
-            self.status.setCurrentText(self.property_data["status"])
-        self.status.setStyleSheet(theme.input_qss())
-        form.addRow(self._label("Status"), self.status)
+        # Status only for admin/manager
+        if not self.is_owner:
+            self.status = QComboBox()
+            self.status.setFixedHeight(40)
+            self.status.addItems(STATUSES)
+            if self.property_data.get("status"):
+                self.status.setCurrentText(self.property_data["status"])
+            self.status.setStyleSheet(theme.input_qss())
+            form.addRow(self._label("Status"), self.status)
+        else:
+            self.status = None
 
         self.listing_price = QLineEdit()
         self.listing_price.setPlaceholderText("e.g. 6500.00 (monthly rent in R)")
@@ -94,7 +110,6 @@ class PropertyFormDialog(QDialog):
 
         layout.addLayout(form)
 
-        # ---- Manage Images button
         img_row = QHBoxLayout()
         img_row.addStretch()
         self.btn_images = QPushButton("🖼  Manage Images")
@@ -112,7 +127,7 @@ class PropertyFormDialog(QDialog):
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         save_btn = buttons.button(QDialogButtonBox.Save)
-        save_btn.setText("Save")
+        save_btn.setText("Submit" if self.is_owner else "Save")
         save_btn.setCursor(Qt.PointingHandCursor)
         save_btn.setFixedHeight(40)
         save_btn.setStyleSheet(theme.button_qss("primary"))
@@ -170,10 +185,13 @@ class PropertyFormDialog(QDialog):
             price = float(price_text) if price_text else None
         except ValueError:
             price = None
-        return {
+        data = {
             "address": self.address.text().strip(),
             "property_type": self.ptype.currentText(),
-            "status": self.status.currentText(),
             "listing_price": price,
             "build_details": self.build_details.toPlainText().strip(),
         }
+        # Admin/manager can set status; owners use auto-pending
+        if self.status is not None:
+            data["status"] = self.status.currentText()
+        return data

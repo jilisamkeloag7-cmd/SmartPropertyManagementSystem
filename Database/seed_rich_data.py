@@ -165,6 +165,11 @@ def reset_and_seed():
                        password_hash=hash_password("manager123"),
                        role=UserRole.MANAGER, status="Active",
                        security_question=SEC_Q, security_answer_hash=hash_answer("mandy"))
+        pending_manager = User(id_number="1101111111111", name="Pat Prospective",
+                               email="pat@spm.local", phone="0871111111",
+                               password_hash=hash_password("pat123"),
+                               role=UserRole.MANAGER, status="Pending Approval",
+                               security_question=SEC_Q, security_answer_hash=hash_answer("pat")) 
         owner1 = User(id_number="8505055555080", name="John Owner",
                       email="owner@spm.local", phone="0821234567",
                       password_hash=hash_password("owner123"),
@@ -229,7 +234,10 @@ def reset_and_seed():
         p7 = Property(address="Old Mill Site, Verulam", property_type="Commercial",
                       build_details="Warehouse, 800m², decommissioned 2024",
                       status="Archived", listing_price=None)
-        db.add_all([p1, p2, p3, p4, p5, p6, p7])
+        p8 = Property(address="90 Sample Street, Chatsworth", property_type="House",
+                      build_details="3 bed, 2 bath, built 2015, renovation recently completed",
+                      status="Pending Approval", listing_price=7200.0)
+        db.add_all([p1, p2, p3, p4, p5, p6, p7, p8])
         db.flush()
 
         # ============================================================
@@ -271,6 +279,8 @@ def reset_and_seed():
                       ownership_share=1.0, start_date=_d(-200)),
             Ownership(property_id=p6.property_id, user_id=owner2.user_id,
                       ownership_share=1.0, start_date=_d(-100)),
+            Ownership(property_id=p8.property_id, user_id=owner1.user_id,
+                      ownership_share=1.0, start_date=_d(-2)),          
         ])
 
         # ============================================================
@@ -573,6 +583,8 @@ def reset_and_seed():
         print(f"{'Tenant (Thabo)':<20} thabo@spm.local          thabo123")
         print(f"{'Tenant (Naledi)':<20} naledi@spm.local         naledi123")
         print(f"{'Inactive (Peter)':<20} peter@spm.local          peter123")
+        print(f"{'PENDING Manager':<20} pat@spm.local            pat123")
+        print("Property #8 is 'Pending Approval' — use for approval testing.")
         print("=" * 60)
 
     finally:

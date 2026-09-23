@@ -1,4 +1,4 @@
-print(">>> property_controller.py V2 <<<")
+print(">>> property_controller.py V3 <<<")
 
 from Services.property_service import PropertyService
 from Services.property_image_service import PropertyImageService
@@ -24,6 +24,23 @@ class PropertyController:
 
     def archive(self, property_id: int, session_user: dict):
         return self.service.archive_property(property_id, session_user)
+
+    # ---- owner flow
+    def owner_submit(self, data: dict, session_user: dict):
+        return self.service.owner_submit_property(data, session_user)
+
+    def owner_update(self, property_id: int, data: dict, session_user: dict):
+        return self.service.owner_update_property(property_id, data, session_user)
+
+    def owner_withdraw(self, property_id: int, session_user: dict):
+        return self.service.owner_withdraw_property(property_id, session_user)
+
+    # ---- approval flow
+    def approve(self, property_id: int, session_user: dict):
+        return self.service.approve_property(property_id, session_user)
+
+    def reject(self, property_id: int, reason: str, session_user: dict):
+        return self.service.reject_property(property_id, reason, session_user)
 
     # ---- images
     def list_images(self, property_id: int):

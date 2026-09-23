@@ -1,4 +1,4 @@
-print(">>> users_screen.py V2 <<<")
+print(">>> users_screen.py V3 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QHeaderView, QAbstractItemView
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QBrush
 from Controllers.user_controller import UserController
 from ui.user_form_dialog import UserFormDialog
 from ui import theme
@@ -32,6 +33,7 @@ class UsersScreen(QWidget):
         rows = self.controller.list(filters)
         self._populate_table(rows)
         self.count_label.setText(f"{len(rows)} user record(s)")
+        self._update_approval_visibility()
 
     def _build(self):
         layout = QVBoxLayout(self)
@@ -84,7 +86,9 @@ class UsersScreen(QWidget):
         filters_row.addWidget(self.role_filter)
 
         self.status_filter = QComboBox()
-        self.status_filter.addItems(["All", "Active", "Inactive"])
+        self.status_filter.addItems(
+            ["All", "Active", "Inactive", "Pending Approval"]
+        )
         self.status_filter.setFixedHeight(38)
         self.status_filter.setStyleSheet(theme.input_qss())
         self.status_filter.currentTextChanged.connect(self.refresh)
@@ -116,6 +120,7 @@ class UsersScreen(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
         self.table.doubleClicked.connect(self._on_row_double_click)
+        self.table.itemSelectionChanged.connect(self._update_approval_visibility)
         self.table.setShowGrid(False)
         self.table.setStyleSheet(f"""
             QTableWidget {{
@@ -165,6 +170,14 @@ class UsersScreen(QWidget):
         self.btn_edit.clicked.connect(self._on_edit_selected)
         actions.addWidget(self.btn_edit)
 
+        # Approve button — only for pending users
+        self.btn_approve = QPushButton("✓ Approve")
+        self.btn_approve.setCursor(Qt.PointingHandCursor)
+        self.btn_approve.setFixedHeight(38)
+        self.btn_approve.setStyleSheet(theme.button_qss("success"))
+        self.btn_approve.clicked.connect(self._on_approve_selected)
+        actions.addWidget(self.btn_approve)
+
         self.btn_toggle = QPushButton("Toggle Active")
         self.btn_toggle.setCursor(Qt.PointingHandCursor)
         self.btn_toggle.setFixedHeight(38)
@@ -183,16 +196,33 @@ class UsersScreen(QWidget):
 
     def _populate_table(self, rows):
         self.table.setRowCount(0)
+        pending_bg = QBrush(QColor(theme.WARNING_SOFT))
+        pending_fg = QBrush(QColor(theme.WARNING_HOVER))
+        inactive_bg = QBrush(QColor(theme.BG_SUBTLE))
+        inactive_fg = QBrush(QColor(theme.TEXT_FAINT))
+
         for r, u in enumerate(rows):
             self.table.insertRow(r)
             self.table.setRowHeight(r, 42)
-            self.table.setItem(r, 0, QTableWidgetItem(str(u["user_id"])))
-            self.table.setItem(r, 1, QTableWidgetItem(u["name"] or ""))
-            self.table.setItem(r, 2, QTableWidgetItem(u["id_number"] or ""))
-            self.table.setItem(r, 3, QTableWidgetItem(u["email"] or ""))
-            self.table.setItem(r, 4, QTableWidgetItem(u["phone"] or ""))
-            self.table.setItem(r, 5, QTableWidgetItem(u["role"] or ""))
-            self.table.setItem(r, 6, QTableWidgetItem(u["status"] or ""))
+            cells = [
+                str(u["user_id"]),
+                u["name"] or "",
+                u["id_number"] or "",
+                u["email"] or "",
+                u["phone"] or "",
+                u["role"] or "",
+                u["status"] or "",
+            ]
+            status = u["status"]
+            for c, text in enumerate(cells):
+                item = QTableWidgetItem(text)
+                if status == "Pending Approval":
+                    item.setBackground(pending_bg)
+                    item.setForeground(pending_fg)
+                elif status == "Inactive":
+                    item.setBackground(inactive_bg)
+                    item.setForeground(inactive_fg)
+                self.table.setItem(r, c, item)
 
     def _selected_user_id(self):
         row = self.table.currentRow()
@@ -200,6 +230,17 @@ class UsersScreen(QWidget):
             return None
         item = self.table.item(row, 0)
         return int(item.text()) if item else None
+
+    def _selected_status(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+        item = self.table.item(row, 6)
+        return item.text() if item else None
+
+    def _update_approval_visibility(self):
+        show = self._selected_status() == "Pending Approval"
+        self.btn_approve.setVisible(show)
 
     def _go_dashboard(self):
         self.parent_window._set_screen("dashboard")
@@ -237,6 +278,20 @@ class UsersScreen(QWidget):
                 msg += " Password updated."
             QMessageBox.information(self, "Success", msg)
             self.refresh()
+
+    def _on_approve_selected(self):
+        uid = self._selected_user_id()
+        if uid is None:
+            return
+        ok, msg = self.controller.reactivate(uid, self.user_data)
+        if ok:
+            QMessageBox.information(
+                self, "Approved",
+                "User activated. They can now log in."
+            )
+            self.refresh()
+        else:
+            QMessageBox.warning(self, "Error", msg)
 
     def _on_toggle_active(self):
         uid = self._selected_user_id()
