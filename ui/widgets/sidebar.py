@@ -1,4 +1,4 @@
-print(">>> sidebar.py V6 <<<")
+print(">>> sidebar.py V7 <<<")
 
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QWidget, QMessageBox)
@@ -10,21 +10,35 @@ SIDEBAR_W = 220
 
 
 NAV_ITEMS = [
-    ("🏠", "Dashboard",     "dashboard",    None),
-    ("🏘",  "Properties",   "properties",   None),
-    ("📅", "Viewings",      "viewings",     {"Administrator", "Property Manager", "Owner", "Tenant"}),
-    ("📝", "Applications",  "applications", {"Administrator", "Property Manager", "Owner", "Tenant"}),
-    ("📄", "Leases",        "leases",       None),
-    ("💰", "Payments",      "payments",     None),
-    ("🔧", "Maintenance",   "maintenance",  None),
-    ("🔑", "Ownership",     "ownerships",   {"Administrator", "Property Manager", "Owner"}),
-    ("📊", "Reports",       "reports",      {"Administrator", "Property Manager", "Owner"}),
-    ("👥", "Users",         "users",        {"Administrator"}),
+    ("🏠", "Dashboard",         "dashboard",        None),
+    ("🏘",  "Properties",       "properties",       None),
+    ("📅", "Viewings",          "viewings",         {"Administrator", "Property Manager", "Owner", "Tenant"}),
+    ("📝", "Applications",      "applications",     {"Administrator", "Property Manager", "Owner", "Tenant"}),
+    ("📄", "Leases",            "leases",           None),
+    ("💰", "Payments",          "payments",         None),
+    ("🔧", "Maintenance",       "maintenance",      None),
+    ("🔑", "Ownership",         "ownerships",       {"Administrator", "Property Manager", "Owner"}),
+    ("📊", "Reports",           "reports",          {"Administrator", "Property Manager", "Owner"}),
+    ("🗂",  "Profile Requests", "profile_requests", {"Administrator", "Property Manager"}),
+    ("👥", "Users",             "users",            {"Administrator"}),
 ]
 
 GUEST_NAV_ITEMS = [
     ("🏘",  "Browse Properties", "properties", None),
 ]
+
+
+_SHORTCUT_HINTS = {
+    "dashboard":    "Ctrl+1",
+    "properties":   "Ctrl+2",
+    "leases":       "Ctrl+3",
+    "payments":     "Ctrl+4",
+    "maintenance":  "Ctrl+5",
+    "viewings":     "Ctrl+6",
+    "applications": "Ctrl+7",
+    "reports":      "Ctrl+8",
+    "users":        "Ctrl+9",
+}
 
 
 class Sidebar(QFrame):
@@ -197,6 +211,8 @@ class Sidebar(QFrame):
         btn.setCursor(Qt.PointingHandCursor)
         btn.setFixedHeight(40)
         btn.setStyleSheet(self._nav_btn_qss(active=False))
+        hint = _SHORTCUT_HINTS.get(key, "")
+        btn.setToolTip(f"{label}  ·  {hint}" if hint else label)
         btn.clicked.connect(lambda checked=False, k=key: self._on_click(k))
         return btn
 

@@ -1,4 +1,5 @@
-print(">>> report_service.py V3 <<<")
+print(">>> report_service.py V5 <<<")
+
 
 import os
 import sys
@@ -22,11 +23,12 @@ from Repositories.user_repository import UserRepository
 
 def _reports_dir():
     if getattr(sys, "frozen", False):
-        base = os.path.dirname(sys.executable)
+        exe_dir = os.path.dirname(sys.executable)
+        internal = os.path.join(exe_dir, "_internal")
+        base = internal if os.path.isdir(internal) else exe_dir
     else:
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, "Documentation", "reports")
-
 
 REPORTS_DIR = _reports_dir()
 
@@ -41,9 +43,9 @@ class ReportService:
         self.users = UserRepository()
         os.makedirs(REPORTS_DIR, exist_ok=True)
 
-    # ==================================================================
-    # ADMIN / MANAGER REPORTS (whole system)
-    # ==================================================================
+    # ================================================================
+    # ADMIN / MANAGER REPORTS
+    # ================================================================
     def generate_property_report(self):
         rows = self.properties.list_all()
         headers = ["ID", "Address", "Type", "Status", "Price", "Build Details"]
@@ -120,11 +122,10 @@ class ReportService:
         ]
         return self._build_pdf("Executive Summary Report", headers, data)
 
-    # ==================================================================
-    # OWNER REPORTS (scoped to owned properties)
-    # ==================================================================
+    # ================================================================
+    # OWNER REPORTS
+    # ================================================================
     def _owner_scope(self, session_user: dict):
-        """Return (owned_property_ids, owned_properties, leases, payments) for owner."""
         uid = session_user.get("user_id")
         owned_pids = set(self.ownerships.property_ids_for_owner(uid))
 
@@ -139,7 +140,6 @@ class ReportService:
         return owned_pids, properties, leases, payments
 
     def generate_owner_summary(self, session_user: dict):
-        """Portfolio summary — counts, occupancy, income at a glance."""
         _, properties, leases, payments = self._owner_scope(session_user)
 
         active_leases = [l for l in leases if l.status == "Active"]
@@ -169,7 +169,6 @@ class ReportService:
         return self._build_pdf(title, headers, data)
 
     def generate_owner_income(self, session_user: dict, months_back: int = 12):
-        """Month-by-month income from payments on owned properties."""
         _, _, _, payments = self._owner_scope(session_user)
 
         today = date.today()
@@ -201,7 +200,6 @@ class ReportService:
         return self._build_pdf(title, headers, data)
 
     def generate_owner_tenants(self, session_user: dict):
-        """Every lease on an owned property with tenant + rent details."""
         _, properties, leases, _ = self._owner_scope(session_user)
 
         prop_by_id = {p.property_id: p for p in properties}
@@ -225,9 +223,9 @@ class ReportService:
         title = f"Owner Tenants Report — {session_user.get('name','Owner')}"
         return self._build_pdf(title, headers, data)
 
-    # ==================================================================
+    # ================================================================
     # PDF BUILDER
-    # ==================================================================
+    # ================================================================
     def _build_pdf(self, title, headers, data):
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -29,6 +29,10 @@ class PropertiesScreen(QWidget):
         self.role = ""
         self._build()
 
+        # Optional overlay for slow operations
+        self._overlay = LoadingOverlay(self, "Loading properties…")
+        self._overlay.hide()
+
     # ------------------------------------------------------------------ API
     def set_user(self, user_data: dict):
         self.user_data = user_data or {}

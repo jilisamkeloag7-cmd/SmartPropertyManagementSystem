@@ -13,6 +13,11 @@ def main():
     print("[main] main() entered.")
 
     app = QApplication(sys.argv)
+    # Set a valid default font size to silence QFont::setPointSize warnings
+    from PySide6.QtGui import QFont
+    _default_font = QFont()
+    _default_font.setPointSize(10)
+    app.setFont(_default_font)
     app.setApplicationName("Smart Property Management System")
     print("[main] QApplication created.")
 

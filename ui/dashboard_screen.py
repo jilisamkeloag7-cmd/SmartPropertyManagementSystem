@@ -1,17 +1,30 @@
-print(">>> dashboard_screen.py V13 <<<")
+print(">>> dashboard_screen.py V14 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                                QPushButton, QFrame, QGridLayout, QScrollArea)
-from PySide6.QtCore import Qt
+                                QPushButton, QFrame, QGridLayout, QMenu,
+                                QToolButton, QWidgetAction)
+from PySide6.QtCore import Qt, QPoint
+from PySide6.QtGui import QAction
 from Controllers.notification_controller import NotificationController
 from Controllers.dashboard_controller import DashboardController
+from Controllers.profile_controller import ProfileController
 from ui.notification_popup import NotificationPopup
+from ui.profile_dialog import ProfileDialog
+from ui.widgets.avatar import make_avatar_pixmap
 from ui import theme
 
 
 TILE_W = 170
 TILE_H = 90
 TILE_GAP = 15
+
+# Colour per activity type — for the recent-activity list
+ACTIVITY_COLOURS = {
+    "payment": "#10b981",
+    "lease": "#3b82f6",
+    "maintenance": "#f59e0b",
+    "default": "#64748b",
+}
 
 
 class DashboardScreen(QWidget):
@@ -21,6 +34,7 @@ class DashboardScreen(QWidget):
         self.user_data = None
         self.notif_controller = NotificationController()
         self.dash_controller = DashboardController()
+        self.profile_controller = ProfileController()
         self.setup_ui()
 
     # ------------------------------------------------------------- API
@@ -31,34 +45,20 @@ class DashboardScreen(QWidget):
         email = user_data.get("email", "")
         self.welcome_label.setText(f"Welcome back, {name}")
         self.role_label.setText(f"Role: {role}  •  {email}")
+        self._refresh_avatar()
         self._rebuild_actions()
         self._refresh_notif_count()
         self._refresh_stats()
 
     # ------------------------------------------------------------- UI
     def setup_ui(self):
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background: transparent; }")
-        outer.addWidget(scroll)
-
-        content = QWidget()
-        content.setStyleSheet(f"background: {theme.BG_APP};")
-        scroll.setWidget(content)
-
-        layout = QVBoxLayout(content)
+        layout = QVBoxLayout()
         layout.setContentsMargins(30, 30, 30, 30)
         layout.setSpacing(20)
 
-        # ============================================================
-        # HEADER
-        # ============================================================
+        # ---------------- Header
         header = QHBoxLayout()
+        header.setSpacing(10)
 
         title = QLabel("🏢 Smart Property Management")
         title.setStyleSheet(
@@ -70,33 +70,70 @@ class DashboardScreen(QWidget):
 
         self.welcome_label = QLabel("Welcome back, User")
         self.welcome_label.setStyleSheet(
-            f"color: {theme.TEXT_MAIN}; font-size: {theme.FS_MD}px; "
-            f"font-weight: bold;"
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FS_BASE}px;"
         )
         header.addWidget(self.welcome_label)
 
-        self.btn_notif = QPushButton("🔔 0")
-        self.btn_notif.setStyleSheet(
-            "background: transparent; border: none; font-size: 16px; padding: 5px 10px;"
-        )
+        # --- Avatar + menu
+        self.avatar_btn = QToolButton()
+        self.avatar_btn.setCursor(Qt.PointingHandCursor)
+        self.avatar_btn.setFixedSize(44, 44)
+        self.avatar_btn.setPopupMode(QToolButton.InstantPopup)
+        self.avatar_btn.setStyleSheet(f"""
+            QToolButton {{
+                background: transparent;
+                border: none;
+                border-radius: 22px;
+            }}
+            QToolButton:hover {{
+                background: {theme.BG_SUBTLE};
+            }}
+            QToolButton::menu-indicator {{ image: none; }}
+        """)
+        self._build_profile_menu()
+        header.addWidget(self.avatar_btn)
+
+        # --- Notification bell with badge
+        self.bell_container = QWidget()
+        self.bell_container.setFixedSize(44, 44)
+        self.bell_container.setStyleSheet("background: transparent;")
+
+        self.btn_notif = QPushButton("🔔", self.bell_container)
+        self.btn_notif.setGeometry(4, 4, 36, 36)
         self.btn_notif.setCursor(Qt.PointingHandCursor)
+        self.btn_notif.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                font-size: 18px;
+            }}
+            QPushButton:hover {{
+                background: {theme.BG_SUBTLE};
+                border-radius: 18px;
+            }}
+        """)
         self.btn_notif.clicked.connect(self._open_notifications)
-        header.addWidget(self.btn_notif)
 
-        btn_profile = QPushButton("👤")
-        btn_profile.setStyleSheet(
-            "background: transparent; border: none; font-size: 16px; padding: 5px 10px;"
-        )
-        header.addWidget(btn_profile)
+        # Unread badge
+        self.badge = QLabel("0", self.bell_container)
+        self.badge.setFixedSize(18, 18)
+        self.badge.move(26, 2)
+        self.badge.setAlignment(Qt.AlignCenter)
+        self.badge.setStyleSheet(f"""
+            background: {theme.DANGER};
+            color: {theme.TEXT_WHITE};
+            border-radius: 9px;
+            font-size: 10px;
+            font-weight: bold;
+            border: 2px solid {theme.BG_APP};
+        """)
+        self.badge.setVisible(False)
 
-        btn_logout = QPushButton("Logout")
-        btn_logout.setCursor(Qt.PointingHandCursor)
-        btn_logout.setStyleSheet(theme.button_qss("danger"))
-        btn_logout.clicked.connect(self._handle_logout)
-        header.addWidget(btn_logout)
+        header.addWidget(self.bell_container)
 
         layout.addLayout(header)
 
+        # ---------------- Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
         sep.setStyleSheet(f"background-color: {theme.BORDER}; max-height: 1px;")
@@ -108,18 +145,14 @@ class DashboardScreen(QWidget):
         )
         layout.addWidget(self.role_label)
 
-        # ============================================================
-        # STATS ROW
-        # ============================================================
-        layout.addSpacing(8)
+        # ---------------- Stats
+        layout.addSpacing(10)
         self.stats_row = QHBoxLayout()
         self.stats_row.setSpacing(12)
         layout.addLayout(self.stats_row)
 
-        # ============================================================
-        # QUICK ACTIONS
-        # ============================================================
-        layout.addSpacing(8)
+        # ---------------- Quick actions
+        layout.addSpacing(10)
         quick = QLabel("Quick Actions")
         quick.setStyleSheet(
             f"font-size: {theme.FS_XL}px; font-weight: bold; "
@@ -127,33 +160,17 @@ class DashboardScreen(QWidget):
         )
         layout.addWidget(quick)
 
-        # Container wraps the grid so we can enforce a min height AND
-        # horizontally center the grid within the full window width.
-        self.actions_container = QWidget()
-        container_layout = QHBoxLayout(self.actions_container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-        container_layout.setSpacing(0)
-
-        container_layout.addStretch(1)   # left flexible spacer
-
         self.action_grid = QGridLayout()
         self.action_grid.setSpacing(TILE_GAP)
-        self.action_grid.setContentsMargins(0, 0, 0, 0)
-        container_layout.addLayout(self.action_grid)
+        layout.addLayout(self.action_grid)
 
-        container_layout.addStretch(1)   # right flexible spacer
-
-        layout.addWidget(self.actions_container)
-
-        # ============================================================
-        # BOTTOM PANELS
-        # ============================================================
-        layout.addSpacing(12)
+        # ---------------- Bottom panels
+        layout.addSpacing(20)
         bottom = QHBoxLayout()
         bottom.setSpacing(20)
 
         self.activity_frame = QFrame()
-        self.activity_frame.setMinimumHeight(180)
+        self.activity_frame.setMinimumHeight(200)
         self.activity_frame.setStyleSheet(theme.card_qss())
         self.activity_layout = QVBoxLayout(self.activity_frame)
         self.activity_layout.setContentsMargins(18, 16, 18, 16)
@@ -161,15 +178,14 @@ class DashboardScreen(QWidget):
         act_title = QLabel("📊 Recent Activity")
         act_title.setMinimumHeight(24)
         act_title.setStyleSheet(
-            f"font-size: {theme.FS_MD}px; font-weight: bold; "
-            f"color: {theme.TEXT_MAIN};"
+            f"font-size: {theme.FS_MD}px; font-weight: bold; color: {theme.TEXT_MAIN};"
         )
         self.activity_layout.addWidget(act_title)
         self.activity_layout.addStretch()
         bottom.addWidget(self.activity_frame, stretch=1)
 
         self.notif_frame = QFrame()
-        self.notif_frame.setMinimumHeight(180)
+        self.notif_frame.setMinimumHeight(200)
         self.notif_frame.setStyleSheet(theme.card_qss())
         self.notif_layout = QVBoxLayout(self.notif_frame)
         self.notif_layout.setContentsMargins(18, 16, 18, 16)
@@ -177,14 +193,96 @@ class DashboardScreen(QWidget):
         notif_title = QLabel("🔔 Upcoming")
         notif_title.setMinimumHeight(24)
         notif_title.setStyleSheet(
-            f"font-size: {theme.FS_MD}px; font-weight: bold; "
-            f"color: {theme.TEXT_MAIN};"
+            f"font-size: {theme.FS_MD}px; font-weight: bold; color: {theme.TEXT_MAIN};"
         )
         self.notif_layout.addWidget(notif_title)
         self.notif_layout.addStretch()
         bottom.addWidget(self.notif_frame, stretch=1)
 
-        layout.addLayout(bottom, stretch=1)
+        layout.addLayout(bottom)
+        self.setLayout(layout)
+
+    # ------------------------------------------------------------- profile menu
+    def _build_profile_menu(self):
+        menu = QMenu(self)
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background: {theme.BG_CARD};
+                border: 1px solid {theme.BORDER};
+                border-radius: {theme.RADIUS_MD}px;
+                padding: 6px;
+                color: {theme.TEXT_MAIN};
+            }}
+            QMenu::item {{
+                padding: 8px 16px;
+                border-radius: {theme.RADIUS_SM}px;
+                font-size: {theme.FS_BASE}px;
+            }}
+            QMenu::item:selected {{
+                background: {theme.PRIMARY_SOFT};
+                color: {theme.PRIMARY};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background: {theme.BORDER};
+                margin: 4px 8px;
+            }}
+        """)
+
+        action_profile = QAction("👤  View Profile", self)
+        action_profile.triggered.connect(self._open_profile)
+        menu.addAction(action_profile)
+
+        menu.addSeparator()
+
+        action_logout = QAction("🚪  Logout", self)
+        action_logout.triggered.connect(self._handle_logout)
+        menu.addAction(action_logout)
+
+        self.avatar_btn.setMenu(menu)
+
+    def _refresh_avatar(self):
+        if not self.user_data:
+            return
+        name = self.user_data.get("name", "")
+        uid = self.user_data.get("user_id")
+        image_path = None
+        if uid:
+            profile = self.profile_controller.get(uid)
+            if profile:
+                image_path = profile.get("profile_image_path")
+        pix = make_avatar_pixmap(image_path, name, 40)
+        self.avatar_btn.setIcon(pix)
+        self.avatar_btn.setIconSize(pix.size())
+
+    def _open_profile(self):
+        if not self.user_data:
+            return
+        dlg = ProfileDialog(
+            self,
+            user_id=self.user_data.get("user_id"),
+            session_user=self.user_data,
+            on_profile_updated=self._on_profile_updated,
+        )
+        dlg.exec()
+
+    def _on_profile_updated(self):
+        """Reload user data from DB and refresh the header."""
+        uid = self.user_data.get("user_id")
+        if not uid:
+            return
+        from Repositories.user_repository import UserRepository
+        u = UserRepository().find_by_id(uid)
+        if not u:
+            return
+        self.user_data["name"] = u.name
+        self.user_data["email"] = u.email
+        self.user_data["phone"] = u.phone or ""
+        self._refresh_avatar()
+        self.welcome_label.setText(f"Welcome back, {u.name}")
+        self.role_label.setText(f"Role: {u.role.value}  •  {u.email}")
+        # Refresh sidebar too
+        self.parent_window.sidebar.set_user(self.user_data)
 
     # ------------------------------------------------------------- stats refresh
     def _refresh_stats(self):
@@ -231,15 +329,11 @@ class DashboardScreen(QWidget):
 
             self.stats_row.addWidget(card, stretch=1)
 
+        # Activity items with coloured dot
         for item in data.get("recent_activity", []):
-            lbl = QLabel(f"• {item}")
-            lbl.setMinimumHeight(22)
-            lbl.setWordWrap(True)
-            lbl.setStyleSheet(
-                f"font-size: {theme.FS_SM}px; color: {theme.TEXT_MAIN};"
-            )
             self.activity_layout.insertWidget(
-                self.activity_layout.count() - 1, lbl
+                self.activity_layout.count() - 1,
+                self._make_activity_row(item),
             )
 
         for item in data.get("upcoming_notifications", []):
@@ -249,9 +343,37 @@ class DashboardScreen(QWidget):
             lbl.setStyleSheet(
                 f"font-size: {theme.FS_SM}px; color: {theme.TEXT_MAIN};"
             )
-            self.notif_layout.insertWidget(
-                self.notif_layout.count() - 1, lbl
-            )
+            self.notif_layout.insertWidget(self.notif_layout.count() - 1, lbl)
+
+    def _make_activity_row(self, text: str):
+        # Detect type from content
+        lower = text.lower()
+        if "payment" in lower:
+            colour = ACTIVITY_COLOURS["payment"]
+        elif "lease" in lower:
+            colour = ACTIVITY_COLOURS["lease"]
+        elif "maintenance" in lower or "request" in lower:
+            colour = ACTIVITY_COLOURS["maintenance"]
+        else:
+            colour = ACTIVITY_COLOURS["default"]
+
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+
+        dot = QLabel("●")
+        dot.setStyleSheet(f"color: {colour}; font-size: 10px;")
+        h.addWidget(dot)
+
+        lbl = QLabel(text)
+        lbl.setWordWrap(True)
+        lbl.setStyleSheet(
+            f"font-size: {theme.FS_SM}px; color: {theme.TEXT_MAIN};"
+        )
+        h.addWidget(lbl, stretch=1)
+
+        return row
 
     @staticmethod
     def _clear_list_layout(layout):
@@ -273,7 +395,11 @@ class DashboardScreen(QWidget):
         except Exception as e:
             print(f"[dashboard] notif count failed: {e}")
             count = 0
-        self.btn_notif.setText(f"🔔 {count}")
+        if count > 0:
+            self.badge.setText(str(count) if count < 100 else "99+")
+            self.badge.setVisible(True)
+        else:
+            self.badge.setVisible(False)
 
     def _open_notifications(self):
         if not self.user_data:
@@ -308,13 +434,10 @@ class DashboardScreen(QWidget):
         current_role = (self.user_data or {}).get("role", "")
         role_overrides = {
             "Ownership": {"Administrator", "Property Manager", "Owner"},
-            "Reports":   {"Administrator", "Property Manager"},
+            "Reports":   {"Administrator", "Property Manager", "Owner"},
         }
 
         pos = 0
-        rows_used = 0
-        cols_per_row = 2
-
         for icon, label, handler, required_role in actions:
             if required_role:
                 allowed = role_overrides.get(label, {required_role})
@@ -342,17 +465,8 @@ class DashboardScreen(QWidget):
             else:
                 b.setEnabled(False)
                 b.setToolTip("Coming soon")
-            row = pos // cols_per_row
-            col = pos % cols_per_row
-            self.action_grid.addWidget(b, row, col)
-            rows_used = max(rows_used, row + 1)
+            self.action_grid.addWidget(b, pos // 2, pos % 2)
             pos += 1
-
-        # Reserve enough vertical space so the bottom panels can't squish the tiles
-        needed_height = (
-            rows_used * TILE_H + max(0, rows_used - 1) * TILE_GAP
-        )
-        self.actions_container.setMinimumHeight(needed_height)
 
     # ------------------------------------------------------------- handlers
     def _handle_logout(self):

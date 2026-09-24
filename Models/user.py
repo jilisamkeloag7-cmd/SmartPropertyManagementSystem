@@ -1,4 +1,4 @@
-print(">>> user.py V3 <<<")
+print(">>> user.py V4 <<<")
 
 from sqlalchemy import Column, Integer, String, DateTime, Enum
 from sqlalchemy.orm import relationship
@@ -27,9 +27,11 @@ class User(Base):
     status        = Column(String(20), default="Active")
     created_at    = Column(DateTime, default=datetime.utcnow)
 
-    # ---- Security question (for forgot-password recovery)
     security_question    = Column(String(200), nullable=True)
     security_answer_hash = Column(String(255), nullable=True)
+
+    # --- Profile picture (filename only; full path resolved at runtime)
+    profile_image = Column(String(255), nullable=True)
 
     ownerships      = relationship("Ownership", back_populates="owner", cascade="all, delete-orphan")
     leases          = relationship("Lease", back_populates="tenant", cascade="all, delete-orphan")

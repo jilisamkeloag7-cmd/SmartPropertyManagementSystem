@@ -1,4 +1,4 @@
-print(">>> main_window.py V12 <<<")
+print(">>> main_window.py V13 <<<")
 
 from PySide6.QtWidgets import (QMainWindow, QStackedWidget, QVBoxLayout,
                                 QHBoxLayout, QWidget, QGraphicsOpacityEffect)
@@ -16,32 +16,34 @@ from ui.ownerships_screen import OwnershipsScreen
 from ui.reports_screen import ReportsScreen
 from ui.viewings_screen import ViewingsScreen
 from ui.applications_screen import ApplicationsScreen
+from ui.profile_requests_screen import ProfileRequestsScreen
 from ui.widgets.sidebar import Sidebar
 from ui.styles import apply_styles
 
 
 SCREENS = {
-    "welcome":      0,
-    "user_type":    1,
-    "login":        2,
-    "dashboard":    3,
-    "properties":   4,
-    "users":        5,
-    "leases":       6,
-    "payments":     7,
-    "maintenance":  8,
-    "ownerships":   9,
-    "reports":      10,
-    "viewings":     11,
-    "applications": 12,
+    "welcome":           0,
+    "user_type":         1,
+    "login":             2,
+    "dashboard":         3,
+    "properties":        4,
+    "users":             5,
+    "leases":            6,
+    "payments":          7,
+    "maintenance":       8,
+    "ownerships":        9,
+    "reports":           10,
+    "viewings":          11,
+    "applications":      12,
+    "profile_requests":  13,
 }
 
 AUTHENTICATED_SCREENS = {
     "dashboard", "properties", "users", "leases", "payments",
-    "maintenance", "ownerships", "reports", "viewings", "applications",
+    "maintenance", "ownerships", "reports", "viewings",
+    "applications", "profile_requests",
 }
 
-# Screens available to guest (unauthenticated) sessions
 GUEST_SCREENS = {"properties"}
 
 
@@ -84,6 +86,7 @@ class MainWindow(QMainWindow):
         self.reports_screen      = ReportsScreen(self)
         self.viewings_screen     = ViewingsScreen(self)
         self.applications_screen = ApplicationsScreen(self)
+        self.profile_requests_screen = ProfileRequestsScreen(self)
 
         self.stacked_widget.addWidget(self.welcome_screen)
         self.stacked_widget.addWidget(self.user_type_screen)
@@ -98,10 +101,13 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.reports_screen)
         self.stacked_widget.addWidget(self.viewings_screen)
         self.stacked_widget.addWidget(self.applications_screen)
+        self.stacked_widget.addWidget(self.profile_requests_screen)
 
         self.stacked_widget.setCurrentIndex(0)
         apply_styles(self)
+        self._install_shortcuts()
 
+    # ------------------------------------------------------------------ transition
     def _animate_transition(self):
         current = self.stacked_widget.currentWidget()
         if current is None:
@@ -128,6 +134,65 @@ class MainWindow(QMainWindow):
         self._anim = anim
         anim.start(QPropertyAnimation.DeleteWhenStopped)
 
+    # ------------------------------------------------------------------ shortcuts
+    def _install_shortcuts(self):
+        from PySide6.QtGui import QShortcut, QKeySequence
+        shortcuts = [
+            ("Ctrl+1", "dashboard"),
+            ("Ctrl+2", "properties"),
+            ("Ctrl+3", "leases"),
+            ("Ctrl+4", "payments"),
+            ("Ctrl+5", "maintenance"),
+            ("Ctrl+6", "viewings"),
+            ("Ctrl+7", "applications"),
+            ("Ctrl+8", "reports"),
+            ("Ctrl+9", "users"),
+        ]
+        for key, screen in shortcuts:
+            sc = QShortcut(QKeySequence(key), self)
+            sc.activated.connect(
+                lambda s=screen: self._shortcut_navigate(s)
+            )
+
+    def _shortcut_navigate(self, screen_key: str):
+        user = self.dashboard_screen.user_data
+        if not user:
+            return
+        role = user.get("role", "")
+
+        if role == "Guest":
+            if screen_key == "properties":
+                self.show_properties()
+            return
+
+        role_rules = {
+            "users":        {"Administrator"},
+            "ownerships":   {"Administrator", "Property Manager", "Owner"},
+            "reports":      {"Administrator", "Property Manager", "Owner"},
+            "viewings":     {"Administrator", "Property Manager", "Owner", "Tenant"},
+            "applications": {"Administrator", "Property Manager", "Owner", "Tenant"},
+        }
+        allowed = role_rules.get(screen_key)
+        if allowed is not None and role not in allowed:
+            return
+
+        navigators = {
+            "dashboard":    lambda: self.show_dashboard(user),
+            "properties":   self.show_properties,
+            "leases":       self.show_leases,
+            "payments":     self.show_payments,
+            "maintenance":  self.show_maintenance,
+            "ownerships":   self.show_ownerships,
+            "reports":      self.show_reports,
+            "users":        self.show_users,
+            "viewings":     self.show_viewings,
+            "applications": self.show_applications,
+        }
+        fn = navigators.get(screen_key)
+        if fn:
+            fn()
+
+    # ------------------------------------------------------------------ nav
     def _set_screen(self, key: str):
         idx = SCREENS.get(key)
         if idx is None:
@@ -142,7 +207,6 @@ class MainWindow(QMainWindow):
             self.sidebar.setVisible(False)
         self._animate_transition()
 
-    # ------------------------------------------------------------------ public nav
     def show_user_type(self):
         self._set_screen("user_type")
 
@@ -192,9 +256,12 @@ class MainWindow(QMainWindow):
         self.applications_screen.set_user(self.dashboard_screen.user_data)
         self._set_screen("applications")
 
+    def show_profile_requests(self):
+        self.profile_requests_screen.set_user(self.dashboard_screen.user_data)
+        self._set_screen("profile_requests")
+
     # ------------------------------------------------------------------ guest
     def show_guest_browse(self):
-        """Start a guest session — can browse Properties only."""
         guest_user = {
             "user_id": None,
             "id_number": "",
@@ -211,7 +278,6 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ sidebar hooks
     def _on_sidebar_navigate(self, key: str):
-        # Guests may only navigate to Properties
         user = self.dashboard_screen.user_data
         if not user:
             return
@@ -219,16 +285,17 @@ class MainWindow(QMainWindow):
             return
 
         navigators = {
-            "dashboard":    lambda: self.show_dashboard(user),
-            "properties":   self.show_properties,
-            "leases":       self.show_leases,
-            "payments":     self.show_payments,
-            "maintenance":  self.show_maintenance,
-            "ownerships":   self.show_ownerships,
-            "reports":      self.show_reports,
-            "users":        self.show_users,
-            "viewings":     self.show_viewings,
-            "applications": self.show_applications,
+            "dashboard":        lambda: self.show_dashboard(user),
+            "properties":       self.show_properties,
+            "leases":           self.show_leases,
+            "payments":         self.show_payments,
+            "maintenance":      self.show_maintenance,
+            "ownerships":       self.show_ownerships,
+            "reports":          self.show_reports,
+            "users":            self.show_users,
+            "viewings":         self.show_viewings,
+            "applications":     self.show_applications,
+            "profile_requests": self.show_profile_requests,
         }
         fn = navigators.get(key)
         if fn:

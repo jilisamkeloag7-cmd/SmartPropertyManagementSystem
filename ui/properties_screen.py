@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QFrame, QInputDialog
 )
 from PySide6.QtCore import Qt
+from ui.widgets.loading_spinner import LoadingOverlay
 from PySide6.QtGui import QColor, QBrush
 from Controllers.property_controller import PropertyController
 from ui.property_form_dialog import PropertyFormDialog
