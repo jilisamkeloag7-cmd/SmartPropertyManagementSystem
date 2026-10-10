@@ -224,6 +224,7 @@ class Sidebar(QFrame):
                     background: {theme.PRIMARY_SOFT};
                     color: {theme.PRIMARY};
                     border: none;
+                    border-left: 3px solid {theme.PRIMARY};
                     border-radius: {theme.RADIUS_MD}px;
                     font-size: {theme.FS_BASE}px;
                     font-weight: bold;
@@ -236,6 +237,7 @@ class Sidebar(QFrame):
                 background: transparent;
                 color: {theme.TEXT_MUTED};
                 border: none;
+                border-left: 3px solid transparent;
                 border-radius: {theme.RADIUS_MD}px;
                 font-size: {theme.FS_BASE}px;
                 text-align: left;

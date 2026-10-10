@@ -1,14 +1,30 @@
-print(">>> login_screen.py V6 <<<")
+print(">>> login_screen.py V7 <<<")
+
+import os
+import sys
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                 QLineEdit, QPushButton, QFrame, QScrollArea)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QLinearGradient, QBrush, QColor, QPalette
+from PySide6.QtGui import QPixmap, QPainter, QColor, QLinearGradient, QBrush
 from Controllers.auth_controller import AuthController
 from ui import theme
 
 
 CARD_W = 440
+
+
+def _assets_dir() -> str:
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+        internal = os.path.join(exe_dir, "_internal")
+        base = internal if os.path.isdir(internal) else exe_dir
+    else:
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, "Assets")
+
+
+LOGIN_BG = os.path.join(_assets_dir(), "login_background.jpg")
 
 
 class LoginScreen(QWidget):
@@ -17,7 +33,45 @@ class LoginScreen(QWidget):
         self.parent_window = parent
         self.current_role = "User"
         self.auth = AuthController()
+        self._bg_pixmap = None
+        self._load_bg()
         self._build()
+
+    def _load_bg(self):
+        if os.path.isfile(LOGIN_BG):
+            pix = QPixmap(LOGIN_BG)
+            if not pix.isNull():
+                self._bg_pixmap = pix
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+
+        if self._bg_pixmap is not None:
+            scaled = self._bg_pixmap.scaled(
+                self.size(),
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation,
+            )
+            x = (scaled.width() - self.width()) // 2
+            y = (scaled.height() - self.height()) // 2
+            painter.drawPixmap(-x, -y, scaled)
+
+            # Strong overlay so the login card sits cleanly
+            if theme.MODE == "dark":
+                overlay = QColor(20, 8, 45, 200)
+            else:
+                overlay = QColor(250, 245, 255, 220)
+            painter.fillRect(self.rect(), overlay)
+        else:
+            # Gradient fallback
+            grad = QLinearGradient(0, 0, 0, 1)
+            grad.setCoordinateMode(QLinearGradient.ObjectBoundingMode)
+            grad.setColorAt(0.0, QColor(theme.BG_GRADIENT_TOP))
+            grad.setColorAt(1.0, QColor(theme.BG_GRADIENT_BOTTOM))
+            painter.fillRect(self.rect(), QBrush(grad))
+
+        painter.end()
 
     def set_role(self, role):
         self.clear_fields()
@@ -32,15 +86,6 @@ class LoginScreen(QWidget):
         self._toggle_btn.setText("Show")
 
     def _build(self):
-        self.setAutoFillBackground(True)
-        pal = self.palette()
-        grad = QLinearGradient(0, 0, 0, 1)
-        grad.setCoordinateMode(QLinearGradient.ObjectBoundingMode)
-        grad.setColorAt(0.0, QColor(theme.BG_GRADIENT_TOP))
-        grad.setColorAt(1.0, QColor(theme.BG_GRADIENT_BOTTOM))
-        pal.setBrush(QPalette.Window, QBrush(grad))
-        self.setPalette(pal)
-
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -158,7 +203,6 @@ class LoginScreen(QWidget):
         self.btn_signin.clicked.connect(self.handle_login)
         card_layout.addWidget(self.btn_signin)
 
-        # ---- Links row (Register | Forgot Password)
         links_row = QHBoxLayout()
         links_row.setSpacing(8)
 
@@ -268,10 +312,7 @@ class LoginScreen(QWidget):
                 self.error_label.setStyleSheet(
                     f"color: {theme.SUCCESS_HOVER}; font-size: {theme.FS_SM}px;"
                 )
-                self.error_label.setText(
-                    f"{msg} You can now sign in below."
-                )
-                # Pre-fill email for convenience
+                self.error_label.setText(f"{msg} You can now sign in below.")
                 self.email_input.setText(data["email"])
                 self.password_input.setFocus()
             else:

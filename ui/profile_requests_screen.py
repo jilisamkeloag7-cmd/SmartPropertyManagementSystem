@@ -1,4 +1,4 @@
-print(">>> profile_requests_screen.py V1 <<<")
+print(">>> profile_requests_screen.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -18,30 +18,48 @@ class ProfileRequestsScreen(QWidget):
         self.controller = ProfileController()
         self.user_data = None
         self._build()
+        print("[profile-requests] screen constructed")
 
     def set_user(self, user_data: dict):
+        print(f"[profile-requests] set_user called — role={user_data.get('role') if user_data else None}")
         self.user_data = user_data
         self.refresh()
 
     def refresh(self):
-        status = self.status_filter.currentText()
-        if status == "Pending":
-            rows = self.controller.list_pending_requests()
-        else:
-            rows = self.controller.list_all_requests()
-            if status != "All":
-                rows = [r for r in rows if r["status"] == status]
+        print("[profile-requests] refresh() starting")
+        try:
+            status = self.status_filter.currentText()
+            print(f"[profile-requests] filter status='{status}'")
 
-        # Search filter
-        q = self.search_input.text().strip().lower()
-        if q:
-            rows = [r for r in rows
-                    if q in (r["user_name"] or "").lower()
-                    or q in (r["field_name"] or "").lower()
-                    or q in (r["user_email"] or "").lower()]
+            if status == "Pending":
+                rows = self.controller.list_pending_requests()
+            else:
+                rows = self.controller.list_all_requests()
+                if status != "All":
+                    rows = [r for r in rows if r["status"] == status]
 
-        self._populate_table(rows)
-        self.count_label.setText(f"{len(rows)} request(s)")
+            print(f"[profile-requests] query returned {len(rows)} row(s)")
+            for r in rows[:5]:
+                print(f"[profile-requests]   #{r['request_id']} {r['user_name']} "
+                      f"{r['field_name']} -> {r['new_value']} [{r['status']}]")
+
+            # Search filter
+            q = self.search_input.text().strip().lower()
+            if q:
+                rows = [r for r in rows
+                        if q in (r["user_name"] or "").lower()
+                        or q in (r["field_name"] or "").lower()
+                        or q in (r["user_email"] or "").lower()]
+                print(f"[profile-requests] after search filter: {len(rows)} row(s)")
+
+            self._populate_table(rows)
+            self.count_label.setText(f"{len(rows)} request(s)")
+            print("[profile-requests] refresh() done")
+
+        except Exception as e:
+            print(f"[profile-requests] ERROR during refresh: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _build(self):
         layout = QVBoxLayout(self)
@@ -51,7 +69,7 @@ class ProfileRequestsScreen(QWidget):
         header = QHBoxLayout()
         header.setSpacing(12)
 
-        title = QLabel("📝 Profile Change Requests")
+        title = QLabel("🗂 Profile Change Requests")
         title.setStyleSheet(
             f"font-size: {theme.FS_2XL}px; font-weight: bold; color: {theme.TEXT_MAIN};"
         )
@@ -185,7 +203,7 @@ class ProfileRequestsScreen(QWidget):
                 r["status"],
             ]
             for c, text in enumerate(cells):
-                item = QTableWidgetItem(text)
+                item = QTableWidgetItem(text if text is not None else "")
                 if r["status"] == "Pending":
                     item.setBackground(pending_bg)
                     item.setForeground(pending_fg)
@@ -226,8 +244,7 @@ class ProfileRequestsScreen(QWidget):
             self, "Approve change",
             f"Approve the {req['field_name']} change for {req['user_name']}?\n\n"
             f"From: {req['old_value'] or '(empty)'}\n"
-            f"To:   {req['new_value']}\n\n"
-            f"The change will be applied immediately.",
+            f"To:   {req['new_value']}",
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:

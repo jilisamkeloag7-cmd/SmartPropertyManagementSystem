@@ -1,11 +1,10 @@
-print(">>> styles.py V3 <<<")
+print(">>> styles.py V4 <<<")
 
 from PySide6.QtWidgets import QApplication
 from ui import theme
 
 
 def apply_styles(window):
-    """Apply global QSS to the application window."""
     qss = f"""
         QMainWindow, QDialog {{
             background-color: {theme.BG_APP};
@@ -16,10 +15,11 @@ def apply_styles(window):
         }}
         QLabel {{
             color: {theme.TEXT_MAIN};
+            background: transparent;
         }}
         QToolTip {{
             background: {theme.TEXT_MAIN};
-            color: {theme.TEXT_WHITE};
+            color: {theme.BG_CARD};
             border: none;
             padding: 6px 10px;
             border-radius: {theme.RADIUS_SM}px;
@@ -55,14 +55,14 @@ def apply_styles(window):
             width: 0;
         }}
 
-        /* ---- Calendar popup (QDateEdit) — force light so dates are always readable */
+        /* ---- Calendar popup — force light so dates are always readable */
         QCalendarWidget QWidget {{
             alternate-background-color: #ffffff;
         }}
         QCalendarWidget QAbstractItemView:enabled {{
-            color: #0f172a;
+            color: #1a0b2e;
             background-color: #ffffff;
-            selection-background-color: #3b82f6;
+            selection-background-color: {theme.PRIMARY};
             selection-color: #ffffff;
             outline: 0;
         }}
@@ -70,7 +70,7 @@ def apply_styles(window):
             color: #cbd5e1;
         }}
         QCalendarWidget QToolButton {{
-            color: #0f172a;
+            color: #1a0b2e;
             background-color: transparent;
             border: none;
             padding: 4px 8px;
@@ -78,25 +78,25 @@ def apply_styles(window):
             font-weight: bold;
         }}
         QCalendarWidget QToolButton:hover {{
-            background-color: #eff6ff;
+            background-color: #fce7f3;
             border-radius: 4px;
         }}
         QCalendarWidget QMenu {{
             background-color: #ffffff;
-            color: #0f172a;
+            color: #1a0b2e;
         }}
         QCalendarWidget QMenu::item:selected {{
-            background-color: #3b82f6;
+            background-color: {theme.PRIMARY};
             color: #ffffff;
         }}
         QCalendarWidget QSpinBox {{
-            color: #0f172a;
+            color: #1a0b2e;
             background-color: #ffffff;
-            selection-background-color: #3b82f6;
+            selection-background-color: {theme.PRIMARY};
             selection-color: #ffffff;
         }}
         QCalendarWidget QWidget#qt_calendar_navigationbar {{
-            background-color: #f8fafc;
+            background-color: #faf5ff;
         }}
     """
     window.setStyleSheet(qss)

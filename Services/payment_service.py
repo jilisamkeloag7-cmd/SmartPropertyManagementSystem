@@ -1,4 +1,4 @@
-print(">>> payment_service.py V4 <<<")
+print(">>> payment_service.py V5 <<<")
 
 from datetime import date, datetime
 from Repositories.payment_repository import PaymentRepository
@@ -9,9 +9,12 @@ from Repositories.ownership_repository import OwnershipRepository
 from Services.notification_service import NotificationService
 
 
-WRITE_ROLES       = {"Administrator", "Property Manager"}
-CONFIRM_ROLES     = {"Administrator", "Property Manager"}
-ADMIN_ONLY        = {"Administrator"}
+WRITE_ROLES   = {"Administrator", "Property Manager"}
+CONFIRM_ROLES = {"Administrator", "Property Manager"}
+ADMIN_ONLY    = {"Administrator"}
+
+# Roles that should receive broadcast notifications for payment events
+BROADCAST_ROLES = {"Administrator", "Property Manager"}
 
 
 class PaymentService:
@@ -23,6 +26,7 @@ class PaymentService:
         self.ownerships = OwnershipRepository()
         self.notifications = NotificationService()
 
+    # ------------------------------------------------------------------ helpers
     @staticmethod
     def _assert_write_permission(session_user):
         if not session_user or session_user.get("role") not in WRITE_ROLES:
@@ -64,6 +68,66 @@ class PaymentService:
         prop = self.properties.find_by_id(lease.property_id) if lease else None
         tenant = self.users.find_by_id(lease.tenant_id) if lease else None
         return self._to_dict(payment, lease, prop, tenant)
+
+    # ------------------------------------------------------------------ broadcast helper
+    def _broadcast_payment_event(self, payment, event_type, title, message,
+                                  priority="Normal", exclude_user_id=None):
+        """
+        Send a notification to every party related to a payment:
+        - The tenant on the lease
+        - The property owner(s)
+        - Every administrator
+        - Every property manager
+
+        Duplicate user_ids are de-duplicated so no one gets the notification twice.
+        """
+        notified = set()
+
+        lease = self.leases.find_by_id(payment.lease_id)
+        if not lease:
+            print(f"[payment-broadcast] Lease #{payment.lease_id} not found — aborting")
+            return
+
+        # 1. Tenant
+        if lease.tenant_id and lease.tenant_id != exclude_user_id:
+            self.notifications.emit(
+                user_id=lease.tenant_id,
+                type=event_type,
+                title=title,
+                message=message,
+                priority=priority,
+            )
+            notified.add(lease.tenant_id)
+
+        # 2. Property owner(s)
+        for o in self.ownerships.list_for_property(lease.property_id):
+            if o.user_id in notified or o.user_id == exclude_user_id:
+                continue
+            self.notifications.emit(
+                user_id=o.user_id,
+                type=event_type,
+                title=title,
+                message=message,
+                priority=priority,
+            )
+            notified.add(o.user_id)
+
+        # 3. Administrators + Property Managers
+        for u in self.users.list_all():
+            if u.role.value not in BROADCAST_ROLES:
+                continue
+            if u.user_id in notified or u.user_id == exclude_user_id:
+                continue
+            self.notifications.emit(
+                user_id=u.user_id,
+                type=event_type,
+                title=title,
+                message=message,
+                priority=priority,
+            )
+            notified.add(u.user_id)
+
+        print(f"[payment-broadcast] '{title}' sent to {len(notified)} user(s)")
 
     # ------------------------------------------------------------------ reads
     def list_payments(self, filters: dict | None = None,
@@ -134,8 +198,7 @@ class PaymentService:
     def mark_paid(self, payment_id: int, paid_date, session_user: dict):
         """
         Direct mark-paid — ADMIN ONLY.
-        Bypasses the tenant submission workflow; only administrators use this
-        (e.g. when payment was received via cash or an out-of-band channel).
+        Broadcasts to every party related to the payment.
         """
         ok, err = self._assert_admin(session_user)
         if not ok:
@@ -151,6 +214,18 @@ class PaymentService:
             paid_date = date.today()
 
         self.payments.mark_paid(payment_id, paid_date)
+
+        self._broadcast_payment_event(
+            payment=payment,
+            event_type="payment_paid",
+            title=f"Payment #{payment_id} marked as Paid",
+            message=(
+                f"Payment #{payment_id} of R{payment.amount:,.2f} has been "
+                f"marked as Paid by an administrator."
+            ),
+            priority="Normal",
+        )
+
         return True, f"Payment #{payment_id} marked as Paid."
 
     def check_overdue(self) -> int:
@@ -161,18 +236,16 @@ class PaymentService:
             if payment.due_date and payment.due_date < today:
                 self.payments.set_status(payment.payment_id, "Overdue")
 
-                lease = self.leases.find_by_id(payment.lease_id)
-                if lease:
-                    self.notifications.emit(
-                        user_id=lease.tenant_id,
-                        type="payment_overdue",
-                        title="Payment overdue",
-                        message=(
-                            f"Payment #{payment.payment_id} of "
-                            f"R{payment.amount:.2f} was due on {payment.due_date}."
-                        ),
-                        priority="High",
-                    )
+                self._broadcast_payment_event(
+                    payment=payment,
+                    event_type="payment_overdue",
+                    title=f"Payment #{payment.payment_id} overdue",
+                    message=(
+                        f"Payment #{payment.payment_id} of "
+                        f"R{payment.amount:,.2f} was due on {payment.due_date}."
+                    ),
+                    priority="High",
+                )
                 newly_overdue += 1
 
         return newly_overdue
@@ -204,24 +277,22 @@ class PaymentService:
 
         self.payments.set_tenant_claim(payment_id, reference)
 
-        for u in self.users.list_all():
-            if u.role.value in CONFIRM_ROLES:
-                self.notifications.emit(
-                    user_id=u.user_id,
-                    type="payment_awaiting_confirmation",
-                    title=f"Payment #{payment_id} awaiting confirmation",
-                    message=(
-                        f"{session_user.get('name', 'Tenant')} has marked "
-                        f"payment #{payment_id} (R{payment.amount:.2f}) as paid. "
-                        f"Reference: {reference[:120]}"
-                    ),
-                    priority="High",
-                )
+        self._broadcast_payment_event(
+            payment=payment,
+            event_type="payment_awaiting_confirmation",
+            title=f"Payment #{payment_id} awaiting confirmation",
+            message=(
+                f"{session_user.get('name', 'Tenant')} has marked "
+                f"payment #{payment_id} (R{payment.amount:,.2f}) as paid. "
+                f"Reference: {reference[:120]}"
+            ),
+            priority="High",
+        )
 
         return True, "Payment marked. Awaiting manager confirmation."
 
     def manager_confirm(self, payment_id: int, session_user: dict):
-        """Confirm a tenant-submitted payment claim. Manager OR admin."""
+        """Confirm a tenant-submitted payment claim. Broadcasts to all parties."""
         ok, err = self._assert_confirm_permission(session_user)
         if not ok:
             return False, err
@@ -234,18 +305,16 @@ class PaymentService:
 
         self.payments.mark_paid(payment_id, date.today())
 
-        lease = self.leases.find_by_id(payment.lease_id)
-        if lease:
-            self.notifications.emit(
-                user_id=lease.tenant_id,
-                type="payment_confirmed",
-                title=f"Payment #{payment_id} confirmed",
-                message=(
-                    f"Your payment of R{payment.amount:.2f} has been confirmed. "
-                    f"Thank you."
-                ),
-                priority="Normal",
-            )
+        self._broadcast_payment_event(
+            payment=payment,
+            event_type="payment_confirmed",
+            title=f"Payment #{payment_id} confirmed",
+            message=(
+                f"Payment #{payment_id} of R{payment.amount:,.2f} has been "
+                f"confirmed as paid by {session_user.get('name', 'management')}."
+            ),
+            priority="Normal",
+        )
 
         return True, f"Payment #{payment_id} confirmed as paid."
 
@@ -266,17 +335,15 @@ class PaymentService:
 
         self.payments.clear_tenant_claim(payment_id, new_status="Pending")
 
-        lease = self.leases.find_by_id(payment.lease_id)
-        if lease:
-            self.notifications.emit(
-                user_id=lease.tenant_id,
-                type="payment_rejected",
-                title=f"Payment #{payment_id} claim rejected",
-                message=(
-                    f"Your payment claim for #{payment_id} was not confirmed. "
-                    f"Reason: {reason[:150]}"
-                ),
-                priority="High",
-            )
+        self._broadcast_payment_event(
+            payment=payment,
+            event_type="payment_rejected",
+            title=f"Payment #{payment_id} claim rejected",
+            message=(
+                f"Payment claim for #{payment_id} was not confirmed. "
+                f"Reason: {reason[:150]}"
+            ),
+            priority="High",
+        )
 
-        return True, "Payment claim rejected. Tenant has been notified."
+        return True, "Payment claim rejected."

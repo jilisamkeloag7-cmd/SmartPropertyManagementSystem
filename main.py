@@ -1,7 +1,8 @@
-print(">>> main.py V3 <<<")
+print(">>> main.py V4 <<<")
 
 import sys
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QFont
 
 print("[main] Imports starting...")
 from ui.main_window import MainWindow
@@ -13,12 +14,12 @@ def main():
     print("[main] main() entered.")
 
     app = QApplication(sys.argv)
-    # Set a valid default font size to silence QFont::setPointSize warnings
-    from PySide6.QtGui import QFont
-    _default_font = QFont()
-    _default_font.setPointSize(10)
-    app.setFont(_default_font)
     app.setApplicationName("Smart Property Management System")
+
+    # Set a clean, modern default font
+    default_font = QFont("Segoe UI", 10)
+    default_font.setStyleStrategy(QFont.PreferAntialias)
+    app.setFont(default_font)
     print("[main] QApplication created.")
 
     try:

@@ -1,64 +1,135 @@
-print(">>> welcome_screen.py V4 <<<")
+print(">>> welcome_screen.py V5 <<<")
+
+import os
+import sys
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                 QLabel, QPushButton)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QLinearGradient, QBrush, QColor, QPalette
+from PySide6.QtGui import QPixmap, QPainter, QColor, QFont
 from ui import theme
+
+
+def _assets_dir() -> str:
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+        internal = os.path.join(exe_dir, "_internal")
+        base = internal if os.path.isdir(internal) else exe_dir
+    else:
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, "Assets")
+
+
+HERO_IMAGE = os.path.join(_assets_dir(), "hero_welcome.jpg")
 
 
 class WelcomeScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
+        self._hero_pixmap = None
+        self._load_hero()
         self._build()
 
+    def _load_hero(self):
+        if os.path.isfile(HERO_IMAGE):
+            pix = QPixmap(HERO_IMAGE)
+            if not pix.isNull():
+                self._hero_pixmap = pix
+
+    def paintEvent(self, event):
+        """Paint the hero image full-bleed with a dark purple overlay for readability."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+
+        if self._hero_pixmap is not None:
+            # Fill entire widget, crop to fit
+            scaled = self._hero_pixmap.scaled(
+                self.size(),
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation,
+            )
+            x = (scaled.width() - self.width()) // 2
+            y = (scaled.height() - self.height()) // 2
+            painter.drawPixmap(-x, -y, scaled)
+        else:
+            # Fallback: solid gradient
+            painter.fillRect(self.rect(), QColor(theme.BG_GRADIENT_BOTTOM))
+
+        # Overlay: dark purple tint, stronger on the left for text readability
+        # Two-layer overlay gives depth
+        overlay = QColor(20, 8, 45, 130)          # base purple tint
+        painter.fillRect(self.rect(), overlay)
+
+        # Radial-ish highlight from top-right (subtle glow)
+        painter.setOpacity(0.18)
+        painter.setBrush(QColor(236, 72, 153))    # magenta glow
+        glow_size = self.width() // 2
+        painter.drawEllipse(
+            self.width() - glow_size // 2 - 100,
+            -glow_size // 3,
+            glow_size, glow_size,
+        )
+        painter.setOpacity(1.0)
+
+        painter.end()
+
     def _build(self):
-        self.setAutoFillBackground(True)
-        pal = self.palette()
-        grad = QLinearGradient(0, 0, 0, 1)
-        grad.setCoordinateMode(QLinearGradient.ObjectBoundingMode)
-        grad.setColorAt(0.0, QColor(theme.BG_GRADIENT_TOP))
-        grad.setColorAt(1.0, QColor(theme.BG_GRADIENT_BOTTOM))
-        pal.setBrush(QPalette.Window, QBrush(grad))
-        self.setPalette(pal)
-
+        # Content layer
         layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setContentsMargins(80, 60, 80, 60)
         layout.setSpacing(0)
-        layout.setContentsMargins(40, 40, 40, 40)
 
-        logo = QLabel("🏢")
-        logo.setAlignment(Qt.AlignCenter)
-        logo.setStyleSheet("font-size: 72px;")
-        layout.addWidget(logo)
+        # Top: logo
+        top_row = QHBoxLayout()
+        logo = QLabel("🏢  Smart Property")
+        logo.setStyleSheet(f"""
+            font-size: {theme.FS_LG}px;
+            font-weight: bold;
+            color: {theme.TEXT_WHITE};
+            letter-spacing: 0.5px;
+        """)
+        top_row.addWidget(logo)
+        top_row.addStretch()
+        layout.addLayout(top_row)
 
-        layout.addSpacing(theme.SP_4)
+        layout.addStretch()
 
-        title = QLabel("Smart Property Management")
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet(
-            f"font-size: {theme.FS_3XL}px; font-weight: bold; "
-            f"color: {theme.TEXT_MAIN};"
+        # Headline block
+        headline = QLabel("Property management,\nreimagined.")
+        headline.setStyleSheet(f"""
+            font-size: 56px;
+            font-weight: 800;
+            color: {theme.TEXT_WHITE};
+            line-height: 1.1;
+        """)
+        headline.setWordWrap(True)
+        layout.addWidget(headline)
+
+        layout.addSpacing(20)
+
+        subtitle = QLabel(
+            "Manage properties, leases, payments and tenants —\n"
+            "all in one modern desktop workspace."
         )
-        layout.addWidget(title)
-
-        layout.addSpacing(theme.SP_2)
-
-        subtitle = QLabel("Streamline your property operations with ease")
-        subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet(
-            f"font-size: {theme.FS_LG}px; color: {theme.TEXT_MUTED};"
-        )
+        subtitle.setStyleSheet(f"""
+            font-size: {theme.FS_LG}px;
+            color: #e5d5f5;
+            line-height: 1.5;
+        """)
+        subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
-        layout.addSpacing(theme.SP_10)
+        layout.addSpacing(40)
 
-        # Primary CTA
-        btn = QPushButton("Get Started")
-        btn.setCursor(Qt.PointingHandCursor)
-        btn.setFixedSize(240, 56)
-        btn.setStyleSheet(f"""
+        # CTA row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(14)
+
+        btn_get_started = QPushButton("Get Started")
+        btn_get_started.setCursor(Qt.PointingHandCursor)
+        btn_get_started.setFixedSize(200, 54)
+        btn_get_started.setStyleSheet(f"""
             QPushButton {{
                 background-color: {theme.PRIMARY};
                 color: {theme.TEXT_WHITE};
@@ -66,54 +137,44 @@ class WelcomeScreen(QWidget):
                 border-radius: {theme.RADIUS_PILL}px;
                 font-size: {theme.FS_LG}px;
                 font-weight: bold;
-                padding: 0 30px;
             }}
             QPushButton:hover    {{ background-color: {theme.PRIMARY_HOVER}; }}
             QPushButton:pressed  {{ background-color: {theme.PRIMARY_PRESSED}; }}
         """)
-        btn.clicked.connect(self._on_start)
+        btn_get_started.clicked.connect(self._on_start)
+        btn_row.addWidget(btn_get_started)
 
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_row.addWidget(btn)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
-
-        layout.addSpacing(theme.SP_4)
-
-        # Guest CTA
-        btn_guest = QPushButton("Continue as Guest  →")
+        btn_guest = QPushButton("Continue as Guest")
         btn_guest.setCursor(Qt.PointingHandCursor)
-        btn_guest.setFixedHeight(36)
+        btn_guest.setFixedSize(200, 54)
         btn_guest.setStyleSheet(f"""
             QPushButton {{
-                background: transparent;
-                color: {theme.TEXT_MUTED};
-                border: none;
-                font-size: {theme.FS_BASE}px;
-                padding: 4px 20px;
+                background-color: transparent;
+                color: {theme.TEXT_WHITE};
+                border: 2px solid rgba(255, 255, 255, 180);
+                border-radius: {theme.RADIUS_PILL}px;
+                font-size: {theme.FS_LG}px;
+                font-weight: bold;
             }}
             QPushButton:hover {{
-                color: {theme.PRIMARY};
-                text-decoration: underline;
+                background-color: rgba(255, 255, 255, 40);
+                border-color: {theme.TEXT_WHITE};
             }}
         """)
         btn_guest.clicked.connect(self._on_guest)
+        btn_row.addWidget(btn_guest)
 
-        guest_row = QHBoxLayout()
-        guest_row.addStretch()
-        guest_row.addWidget(btn_guest)
-        guest_row.addStretch()
-        layout.addLayout(guest_row)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
 
-        layout.addSpacing(theme.SP_8)
+        layout.addStretch()
 
-        hint = QLabel("Version 0.1  •  ENEL2SEH1 Group Project")
-        hint.setAlignment(Qt.AlignCenter)
-        hint.setStyleSheet(
-            f"font-size: {theme.FS_XS}px; color: {theme.TEXT_FAINT};"
+        # Footer
+        footer = QLabel("Version 0.1  •  ENEL2SEH1 Group Project")
+        footer.setStyleSheet(
+            f"font-size: {theme.FS_XS}px; color: #c0a8d8;"
         )
-        layout.addWidget(hint)
+        layout.addWidget(footer)
 
     def _on_start(self):
         self.parent_window.show_user_type()
