@@ -139,29 +139,40 @@ class ProfileService:
         return True, "Password changed."
 
     # ------------------------------------------------------------------ profile image
-    def upload_profile_image(self, user_id: int, source_path: str):
-        if not os.path.isfile(source_path):
+        def upload_profile_image(self, user_id: int, source_path: str):
+         if not os.path.isfile(source_path):
             return False, "File not found."
 
-        ext = os.path.splitext(source_path)[1].lower()
-        if ext not in SUPPORTED_EXTENSIONS:
-            return False, f"Unsupported file type. Use one of: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+         ext = os.path.splitext(source_path)[1].lower()
+         if ext not in SUPPORTED_EXTENSIONS:
+             return False, f"Unsupported file type."
 
-        size_mb = os.path.getsize(source_path) / (1024 * 1024)
-        if size_mb > MAX_IMAGE_MB:
-            return False, f"File is too large ({size_mb:.1f} MB). Max {MAX_IMAGE_MB} MB."
+         size_mb = os.path.getsize(source_path) / (1024 * 1024)
+         if size_mb > MAX_IMAGE_MB:
+             return False, f"File is too large ({size_mb:.1f} MB)."
 
-        # Delete old image if any
-        u = self.users.find_by_id(user_id)
-        if u and u.profile_image:
-            old = os.path.join(PROFILE_IMAGES_DIR, u.profile_image)
-            try:
-                if os.path.isfile(old):
-                    os.remove(old)
-            except OSError:
-                pass
+         new_name = f"u{user_id}_{uuid.uuid4().hex}{ext}"
 
-        new_name = f"u{user_id}_{uuid.uuid4().hex}{ext}"
+         # ---- Cloud
+         from Database.config import USE_CLOUD_STORAGE
+         from Services.cloud_storage_service import get_cloud_storage
+         if USE_CLOUD_STORAGE:
+             cloud = get_cloud_storage()
+             url = cloud.upload_profile_image(source_path, new_name)
+             if url:
+                 self.users.update_profile_image(user_id, url)
+                 return True, "Profile picture uploaded to cloud."
+
+         # ---- Local fallback
+         u = self.users.find_by_id(user_id)
+         if u and u.profile_image and not u.profile_image.startswith("http"):
+             old = os.path.join(PROFILE_IMAGES_DIR, u.profile_image)
+             try:
+                 if os.path.isfile(old):
+                     os.remove(old)
+             except OSError:
+                 pass
+
         dest = os.path.join(PROFILE_IMAGES_DIR, new_name)
         try:
             shutil.copy2(source_path, dest)
@@ -170,20 +181,6 @@ class ProfileService:
 
         self.users.update_profile_image(user_id, new_name)
         return True, "Profile picture updated."
-
-    def remove_profile_image(self, user_id: int):
-        u = self.users.find_by_id(user_id)
-        if not u or not u.profile_image:
-            return False, "No profile picture to remove."
-        old = os.path.join(PROFILE_IMAGES_DIR, u.profile_image)
-        try:
-            if os.path.isfile(old):
-                os.remove(old)
-        except OSError:
-            pass
-        self.users.update_profile_image(user_id, None)
-        return True, "Profile picture removed."
-
     # ------------------------------------------------------------------ change requests
     def request_change(self, user_id: int, field_name: str, new_value: str,
                         reason: str):

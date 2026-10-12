@@ -1,4 +1,4 @@
-print(">>> main_window.py V13 <<<")
+print(">>> main_window.py V14 <<<")
 
 from PySide6.QtWidgets import (QMainWindow, QStackedWidget, QVBoxLayout,
                                 QHBoxLayout, QWidget, QGraphicsOpacityEffect)
@@ -18,6 +18,7 @@ from ui.viewings_screen import ViewingsScreen
 from ui.applications_screen import ApplicationsScreen
 from ui.profile_requests_screen import ProfileRequestsScreen
 from ui.widgets.sidebar import Sidebar
+from ui.widgets.connection_banner import ConnectionBanner
 from ui.styles import apply_styles
 
 
@@ -57,10 +58,24 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         self.setCentralWidget(central)
-        root = QHBoxLayout(central)
+
+        # ---- Top-level vertical layout: banner on top, then app content
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Connection banner (hidden when online)
+        self.connection_banner = ConnectionBanner(self)
+        outer.addWidget(self.connection_banner)
+
+        # Wrapper widget holds sidebar + stacked widgets
+        content = QWidget()
+        root = QHBoxLayout(content)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        outer.addWidget(content, stretch=1)
 
+        # ---- Sidebar
         self.sidebar = Sidebar(
             self,
             on_navigate=self._on_sidebar_navigate,
@@ -70,6 +85,7 @@ class MainWindow(QMainWindow):
         self.sidebar.setVisible(False)
         root.addWidget(self.sidebar)
 
+        # ---- Stacked screens
         self.stacked_widget = QStackedWidget()
         root.addWidget(self.stacked_widget, stretch=1)
 
@@ -107,7 +123,7 @@ class MainWindow(QMainWindow):
         apply_styles(self)
         self._install_shortcuts()
 
-    # ------------------------------------------------------------------ transition
+    # ------------------------------------------------------------------ transitions
     def _animate_transition(self):
         current = self.stacked_widget.currentWidget()
         if current is None:
@@ -276,7 +292,7 @@ class MainWindow(QMainWindow):
         self.properties_screen.set_user(guest_user)
         self._set_screen("properties")
 
-    # ------------------------------------------------------------------ sidebar hooks
+    # ------------------------------------------------------------------ sidebar
     def _on_sidebar_navigate(self, key: str):
         user = self.dashboard_screen.user_data
         if not user:
