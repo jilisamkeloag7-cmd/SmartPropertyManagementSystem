@@ -1,4 +1,3 @@
-print(">>> connection.py V2 <<<")
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -9,10 +8,10 @@ if IS_CLOUD:
         DATABASE_URL,
         echo=False,
         future=True,
-        pool_size=5,
-        max_overflow=10,
-        pool_pre_ping=True,     # reconnect if connection dropped
-        pool_recycle=300,       # recycle every 5 min
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_recycle=280,
     )
 else:
     engine = create_engine(

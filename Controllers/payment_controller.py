@@ -1,4 +1,3 @@
-print(">>> payment_controller.py V3 <<<")
 
 from Services.payment_service import PaymentService
 

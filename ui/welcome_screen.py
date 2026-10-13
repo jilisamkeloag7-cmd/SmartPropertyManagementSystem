@@ -1,4 +1,3 @@
-print(">>> welcome_screen.py V5 <<<")
 
 import os
 import sys
@@ -82,7 +81,7 @@ class WelcomeScreen(QWidget):
 
         # Top: logo
         top_row = QHBoxLayout()
-        logo = QLabel("🏢  Smart Property")
+        logo = QLabel("🏘  Smart Property")
         logo.setStyleSheet(f"""
             font-size: {theme.FS_LG}px;
             font-weight: bold;
@@ -181,3 +180,4 @@ class WelcomeScreen(QWidget):
 
     def _on_guest(self):
         self.parent_window.show_guest_browse()
+

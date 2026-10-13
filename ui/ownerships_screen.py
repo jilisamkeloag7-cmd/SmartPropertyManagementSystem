@@ -1,4 +1,3 @@
-print(">>> ownerships_screen.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,

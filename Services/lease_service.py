@@ -1,11 +1,15 @@
-print(">>> lease_service.py V3 <<<")
 
 from datetime import date
 from Repositories.lease_repository import LeaseRepository
 from Repositories.payment_repository import PaymentRepository
 from Repositories.property_repository import PropertyRepository
 from Repositories.user_repository import UserRepository
+from Repositories.ownership_repository import OwnershipRepository
 from Services.notification_service import NotificationService
+from Database.connection import get_session
+from Models.lease import Lease
+from Models.property import Property
+from Models.user import User
 from Models.user import UserRole
 
 
@@ -20,6 +24,7 @@ class LeaseService:
         self.payments = PaymentRepository()
         self.properties = PropertyRepository()
         self.users = UserRepository()
+        self.ownerships = OwnershipRepository()
         self.notifications = NotificationService()
 
     # ------------------------------------------------------------------ helpers
@@ -34,6 +39,16 @@ class LeaseService:
         if not session_user or session_user.get("role") not in ADMIN_ONLY:
             return False, "Only administrators can directly terminate leases."
         return True, None
+
+    @staticmethod
+    def _prefetch_lookups():
+        db = get_session()
+        try:
+            props = {p.property_id: p for p in db.query(Property).all()}
+            users = {u.user_id: u for u in db.query(User).all()}
+            return props, users
+        finally:
+            db.close()
 
     def _recalculate_property_status(self, property_id: int):
         if self.leases.has_active_lease(property_id):
@@ -61,7 +76,12 @@ class LeaseService:
             "termination_reason": lease.termination_reason or "",
         }
 
-    def _enrich(self, lease):
+    def _enrich(self, lease, props_by_id, users_by_id):
+        prop = props_by_id.get(lease.property_id)
+        tenant = users_by_id.get(lease.tenant_id)
+        return self._to_dict(lease, prop, tenant)
+
+    def _enrich_one(self, lease):
         prop = self.properties.find_by_id(lease.property_id)
         tenant = self.users.find_by_id(lease.tenant_id)
         return self._to_dict(lease, prop, tenant)
@@ -73,9 +93,11 @@ class LeaseService:
         query = (filters.get("query") or "").strip().lower()
 
         rows = self.leases.list_all()
+        props_by_id, users_by_id = self._prefetch_lookups()
+
         out = []
         for lease in rows:
-            d = self._enrich(lease)
+            d = self._enrich(lease, props_by_id, users_by_id)
             if status_filter and status_filter != "All" and d["status"] != status_filter:
                 continue
             if query:
@@ -87,11 +109,12 @@ class LeaseService:
 
     def get_lease(self, lease_id: int):
         lease = self.leases.find_by_id(lease_id)
-        return self._enrich(lease) if lease else None
+        return self._enrich_one(lease) if lease else None
 
     def check_expiring(self, threshold_days: int = 30):
         rows = self.leases.find_expiring(threshold_days)
-        return [self._enrich(l) for l in rows]
+        props_by_id, users_by_id = self._prefetch_lookups()
+        return [self._enrich(l, props_by_id, users_by_id) for l in rows]
 
     # ------------------------------------------------------------------ writes
     def create_lease(self, data: dict, session_user: dict):
@@ -148,11 +171,6 @@ class LeaseService:
         return True, f"Lease #{lease.lease_id} created."
 
     def terminate_lease(self, lease_id: int, session_user: dict):
-        """
-        Direct termination — ADMIN ONLY.
-        Bypasses the tenant termination-request workflow.
-        Managers should use approve_termination to action a tenant request.
-        """
         ok, err = self._assert_admin(session_user)
         if not ok:
             return False, err
@@ -172,15 +190,12 @@ class LeaseService:
         lease = self.leases.find_by_id(lease_id)
         if not lease:
             return False, "Lease not found."
-
         if session_user.get("user_id") != lease.tenant_id:
             return False, "You can only request termination of your own lease."
-
         if lease.status != "Active":
-            return False, f"Lease is {lease.status} — cannot request termination."
-
+            return False, f"Lease is {lease.status}."
         if lease.termination_requested:
-            return False, "A termination request is already pending for this lease."
+            return False, "A termination request is already pending."
 
         reason = (reason or "").strip()
         if len(reason) < 10:
@@ -191,20 +206,15 @@ class LeaseService:
         for u in self.users.list_all():
             if u.role.value in APPROVE_ROLES:
                 self.notifications.emit(
-                    user_id=u.user_id,
-                    type="lease_termination_request",
-                    title=f"Termination requested — Lease #{lease_id}",
-                    message=(
-                        f"Tenant has requested to terminate lease #{lease_id}. "
-                        f"Reason: {reason[:120]}"
-                    ),
-                    priority="High",
+                    u.user_id, "lease_termination_request",
+                    f"Termination requested — Lease #{lease_id}",
+                    f"Tenant requested termination of lease #{lease_id}. "
+                    f"Reason: {reason[:120]}",
+                    "High",
                 )
-
         return True, "Termination request submitted."
 
     def approve_termination(self, lease_id: int, session_user: dict):
-        """Manager OR admin approves a tenant's termination request."""
         ok, err = self._assert_write_permission(session_user)
         if not ok:
             return False, err
@@ -213,23 +223,19 @@ class LeaseService:
         if not lease:
             return False, "Lease not found."
         if not lease.termination_requested:
-            return False, "No pending termination request on this lease."
+            return False, "No pending termination request."
         if lease.status != "Active":
-            return False, f"Lease is {lease.status} — cannot approve."
+            return False, f"Lease is {lease.status}."
 
         self.leases.set_termination_request(lease_id, False, None)
         self.leases.update_status(lease_id, "Terminated")
         self._recalculate_property_status(lease.property_id)
 
         self.notifications.emit(
-            user_id=lease.tenant_id,
-            type="lease_termination_approved",
-            title=f"Termination approved — Lease #{lease_id}",
-            message=(
-                "Your lease termination request has been approved. "
-                "The lease is now terminated."
-            ),
-            priority="High",
+            lease.tenant_id, "lease_termination_approved",
+            f"Termination approved — Lease #{lease_id}",
+            "Your lease termination request has been approved.",
+            "High",
         )
         return True, f"Lease #{lease_id} terminated."
 
@@ -242,18 +248,14 @@ class LeaseService:
         if not lease:
             return False, "Lease not found."
         if not lease.termination_requested:
-            return False, "No pending termination request on this lease."
+            return False, "No pending termination request."
 
         self.leases.set_termination_request(lease_id, False, None)
 
         self.notifications.emit(
-            user_id=lease.tenant_id,
-            type="lease_termination_rejected",
-            title=f"Termination rejected — Lease #{lease_id}",
-            message=(
-                "Your lease termination request was reviewed and declined. "
-                "Please contact management for details."
-            ),
-            priority="High",
+            lease.tenant_id, "lease_termination_rejected",
+            f"Termination rejected — Lease #{lease_id}",
+            "Your lease termination request was declined.",
+            "High",
         )
-        return True, "Termination request rejected. Lease remains active."
+        return True, "Termination request rejected."

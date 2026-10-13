@@ -1,4 +1,3 @@
-print(">>> property_image_service.py V3 <<<")
 
 import os
 import shutil
@@ -103,7 +102,7 @@ class PropertyImageService:
         if USE_CLOUD_STORAGE and self.cloud.enabled:
             url = self.cloud.upload_property_image(source_path, new_name)
             if not url:
-                return False, "Cloud upload failed. Check your internet connection."
+                return False, "Cloud upload rejected. Check Supabase bucket permissions (RLS policy)."
             order_index = self.images.count_for_property(property_id)
             self.images.create(property_id, url, order_index)
             return True, "Image uploaded to cloud."

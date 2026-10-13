@@ -1,4 +1,3 @@
-print(">>> cloud_storage_service.py V1 <<<")
 
 import os
 from Database.config import (USE_CLOUD_STORAGE, SUPABASE_URL,

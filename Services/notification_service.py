@@ -1,32 +1,34 @@
-print(">>> notification_service.py V2 <<<")
 
 from Repositories.notification_repository import NotificationRepository
+from Services.email_service import EmailService
 
 
 class NotificationService:
     def __init__(self):
         self.notifications = NotificationRepository()
+        self.email_service = EmailService()
 
-    # ------------------------------------------------------------------ emit
     def emit(self, user_id, type, title, message, priority="Normal"):
-        """
-        Persist a notification for a user.
-        Called by every other module when an event occurs.
-        """
         if not user_id:
             return None
-        return self.notifications.create(
-            user_id=user_id,
-            type=type,
-            title=title,
-            message=message,
-            priority=priority,
+
+        # 1. Persist
+        n = self.notifications.create(
+            user_id=user_id, type=type, title=title,
+            message=message, priority=priority,
         )
+
+        # 2. Fire email (async, skips fake addresses)
+        try:
+            self.email_service.queue(n)
+        except Exception as e:
+            print(f"[notification] email dispatch failed: {e}")
+
+        return n
 
     # ------------------------------------------------------------------ reads
     def list_for_user(self, user_id: int):
-        rows = self.notifications.list_for_user(user_id)
-        return [self._to_dict(n) for n in rows]
+        return [self._to_dict(n) for n in self.notifications.list_for_user(user_id)]
 
     def unread_count(self, user_id: int) -> int:
         return self.notifications.count_unread(user_id)
@@ -45,7 +47,6 @@ class NotificationService:
             "is_unread": n.read_at is None,
         }
 
-    # ------------------------------------------------------------------ writes
     def mark_read(self, notification_id: int):
         ok = self.notifications.mark_read(notification_id)
         return (True, "Marked as read.") if ok else (False, "Notification not found.")

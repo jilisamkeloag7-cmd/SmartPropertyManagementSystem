@@ -1,4 +1,3 @@
-print(">>> connection_banner.py V1 <<<")
 
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
 from PySide6.QtCore import Qt, QTimer
@@ -12,6 +11,10 @@ class ConnectionBanner(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        _f = self.font()
+        if _f.pointSize() <= 0:
+            _f.setPointSize(10)
+            self.setFont(_f)
         self.setFixedHeight(44)
         self.setStyleSheet(f"""
             QFrame {{
@@ -62,7 +65,7 @@ class ConnectionBanner(QFrame):
         if IS_CLOUD:
             self._timer = QTimer(self)
             self._timer.timeout.connect(self._auto_check)
-            self._timer.start(5000)   # every 5 seconds
+            self._timer.start(30000)   # every 30 seconds
             QTimer.singleShot(1500, self._auto_check)   # initial check
 
     def _auto_check(self):

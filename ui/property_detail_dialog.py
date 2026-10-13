@@ -1,4 +1,3 @@
-print(">>> property_detail_dialog.py V5 <<<")
 
 import os
 from PySide6.QtWidgets import (
@@ -6,6 +5,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QWidget, QMessageBox
 )
 from PySide6.QtCore import Qt
+from ui.widgets.image_cache import load_pixmap
 from PySide6.QtGui import QPixmap
 from Controllers.property_controller import PropertyController
 from Controllers.review_controller import ReviewController
@@ -263,8 +263,8 @@ class PropertyDetailDialog(QDialog):
             return
         img = self.images[self.current_index]
         path = img.get("full_path")
-        if path and os.path.isfile(path):
-            pix = QPixmap(path)
+        if path:
+            pix = load_pixmap(path)
             if not pix.isNull():
                 scaled = pix.scaled(IMAGE_W, IMAGE_H - 16,
                                     Qt.KeepAspectRatio, Qt.SmoothTransformation)

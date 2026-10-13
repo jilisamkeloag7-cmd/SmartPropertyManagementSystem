@@ -1,4 +1,3 @@
-print(">>> seed_rich_data.py V9 <<<")
 
 """
 Rich test-data seed script.

@@ -1,4 +1,3 @@
-print(">>> user_form_dialog.py V3 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,

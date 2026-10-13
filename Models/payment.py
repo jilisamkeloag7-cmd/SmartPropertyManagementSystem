@@ -1,4 +1,3 @@
-print(">>> payment.py V2 <<<")
 
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship

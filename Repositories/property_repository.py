@@ -1,4 +1,3 @@
-print(">>> property_repository.py V2 <<<")
 
 from sqlalchemy import func
 from Database.connection import get_session

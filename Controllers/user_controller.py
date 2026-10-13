@@ -1,4 +1,3 @@
-print(">>> user_controller.py V1 <<<")
 
 from Services.user_service import UserService
 

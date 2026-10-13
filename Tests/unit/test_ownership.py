@@ -1,4 +1,3 @@
-print(">>> test_ownership.py <<<")
 
 from datetime import date
 from Services.property_service import PropertyService

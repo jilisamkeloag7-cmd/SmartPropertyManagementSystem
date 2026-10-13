@@ -1,4 +1,3 @@
-print(">>> user.py V4 <<<")
 
 from sqlalchemy import Column, Integer, String, DateTime, Enum
 from sqlalchemy.orm import relationship

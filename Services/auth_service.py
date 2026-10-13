@@ -1,4 +1,3 @@
-print(">>> auth_service.py V4 <<<")
 
 from Repositories.user_repository import UserRepository
 from Services.security import (hash_password, verify_password,

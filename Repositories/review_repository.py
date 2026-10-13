@@ -1,4 +1,3 @@
-print(">>> review_repository.py V1 <<<")
 
 from Database.connection import get_session
 from Models.review import Review

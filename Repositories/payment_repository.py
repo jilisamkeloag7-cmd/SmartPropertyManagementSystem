@@ -1,4 +1,3 @@
-print(">>> payment_repository.py V2 <<<")
 
 from datetime import datetime
 from Database.connection import get_session

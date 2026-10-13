@@ -1,4 +1,3 @@
-print(">>> user_type_screen.py V5 <<<")
 
 import os
 import sys
@@ -197,3 +196,4 @@ class UserTypeScreen(QWidget):
 
     def _go_back(self):
         self.parent_window._set_screen("welcome")
+

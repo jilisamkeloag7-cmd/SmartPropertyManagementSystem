@@ -1,4 +1,3 @@
-print(">>> config.py V6 <<<")
 
 import os
 import sys

@@ -1,4 +1,3 @@
-print(">>> property.py V4 <<<")
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float
 from sqlalchemy.orm import relationship

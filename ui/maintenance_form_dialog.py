@@ -1,4 +1,3 @@
-print(">>> maintenance_form_dialog.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QTextEdit,

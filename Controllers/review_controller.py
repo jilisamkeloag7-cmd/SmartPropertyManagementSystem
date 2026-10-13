@@ -1,4 +1,3 @@
-print(">>> review_controller.py V1 <<<")
 
 from Services.review_service import ReviewService
 

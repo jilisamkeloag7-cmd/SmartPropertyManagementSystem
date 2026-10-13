@@ -1,4 +1,3 @@
-print(">>> dashboard_controller.py V1 <<<")
 
 from Services.dashboard_service import DashboardService
 

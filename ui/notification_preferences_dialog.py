@@ -1,4 +1,3 @@
-print(">>> notification_preferences_dialog.py V1 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,

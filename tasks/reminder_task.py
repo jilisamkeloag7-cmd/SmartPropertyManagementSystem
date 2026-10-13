@@ -1,4 +1,3 @@
-print(">>> reminder_task.py V1 <<<")
 
 from Services.lease_service import LeaseService
 from Services.payment_service import PaymentService

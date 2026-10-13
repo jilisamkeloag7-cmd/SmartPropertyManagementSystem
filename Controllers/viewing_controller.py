@@ -1,4 +1,3 @@
-print(">>> viewing_controller.py V1 <<<")
 
 from Services.viewing_service import ViewingService
 

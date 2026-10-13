@@ -1,4 +1,3 @@
-print(">>> user_service.py V2 <<<")
 
 from Repositories.user_repository import UserRepository
 from Services.security import hash_password

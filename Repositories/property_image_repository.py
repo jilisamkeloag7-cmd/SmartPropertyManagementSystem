@@ -1,4 +1,3 @@
-print(">>> property_image_repository.py V1 <<<")
 
 from Database.connection import get_session
 from Models.property_image import PropertyImage

@@ -1,4 +1,3 @@
-print(">>> report_service.py V5 <<<")
 
 
 import os

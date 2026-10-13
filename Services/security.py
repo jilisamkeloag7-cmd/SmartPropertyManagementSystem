@@ -1,4 +1,3 @@
-print(">>> security.py V2 <<<")
 
 import bcrypt
 

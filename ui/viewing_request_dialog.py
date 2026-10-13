@@ -1,4 +1,3 @@
-print(">>> viewing_request_dialog.py V1 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QTextEdit, QComboBox,

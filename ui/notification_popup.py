@@ -1,4 +1,3 @@
-print(">>> notification_popup.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,

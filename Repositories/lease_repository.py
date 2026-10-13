@@ -1,4 +1,3 @@
-print(">>> lease_repository.py V2 <<<")
 
 from datetime import date, timedelta
 from Database.connection import get_session

@@ -1,4 +1,3 @@
-print(">>> properties_screen.py V3 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,

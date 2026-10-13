@@ -1,4 +1,3 @@
-print(">>> scheduler.py V1 <<<")
 
 import threading
 import time

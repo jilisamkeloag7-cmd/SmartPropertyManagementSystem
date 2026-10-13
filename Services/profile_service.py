@@ -1,4 +1,3 @@
-print(">>> profile_service.py V1 <<<")
 
 import os
 import shutil

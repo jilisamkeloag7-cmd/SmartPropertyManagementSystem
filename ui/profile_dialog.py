@@ -1,4 +1,3 @@
-print(">>> profile_dialog.py V1 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit,

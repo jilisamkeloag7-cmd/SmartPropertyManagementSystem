@@ -1,4 +1,3 @@
-print(">>> maintenance_detail_dialog.py V3 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox

@@ -1,4 +1,3 @@
-print(">>> property_controller.py V3 <<<")
 
 from Services.property_service import PropertyService
 from Services.property_image_service import PropertyImageService

@@ -1,14 +1,28 @@
-print(">>> email_service.py V2 (Brevo API) <<<")
+print(">>> email_service.py V3 <<<")
 
 import os
+import re
+import threading
 import requests
 
 
+_FAKE_DOMAINS = (".local", ".test", ".example", ".invalid")
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _is_real_email(email: str) -> bool:
+    if not email:
+        return False
+    email = email.strip().lower()
+    if not _EMAIL_RE.match(email):
+        return False
+    if any(email.endswith(d) for d in _FAKE_DOMAINS):
+        return False
+    return True
+
+
 class EmailService:
-    """
-    Email dispatcher using Brevo's HTTP API.
-    Falls back to console logging if API key is missing (dry-run mode).
-    """
+    _logged = False  # class-level flag: log only once per session
 
     def __init__(self):
         self.api_key = os.environ.get("BREVO_API_KEY", "").strip()
@@ -17,21 +31,14 @@ class EmailService:
         self.enabled = bool(self.api_key and self.sender_email)
         self.api_url = "https://api.brevo.com/v3/smtp/email"
 
-        if self.enabled:
-            print(f"[email] Brevo API configured (sender: {self.sender_email})")
-        else:
-            print("[email] Brevo API not configured - running in dry-run mode")
+        if not EmailService._logged:
+            if self.enabled:
+                print(f"[email] Brevo API configured (sender: {self.sender_email})")
+            else:
+                print("[email] Brevo API not configured - dry-run mode")
+            EmailService._logged = True
 
-        self._queue = []
-
-    # ------------------------------------------------------------------ send
-    def send(self, to: str, subject: str, body: str) -> bool:
-        if not to:
-            return False
-        if not self.enabled:
-            print(f"[email] (dry-run) to={to} subject={subject}")
-            return True
-
+    def _send_sync(self, to: str, subject: str, body: str) -> bool:
         try:
             headers = {
                 "accept": "application/json",
@@ -39,10 +46,7 @@ class EmailService:
                 "content-type": "application/json",
             }
             payload = {
-                "sender": {
-                    "email": self.sender_email,
-                    "name": self.sender_name,
-                },
+                "sender": {"email": self.sender_email, "name": self.sender_name},
                 "to": [{"email": to}],
                 "subject": subject,
                 "textContent": body,
@@ -53,38 +57,37 @@ class EmailService:
             if response.status_code in (200, 201, 202):
                 print(f"[email] Sent to {to}")
                 return True
-            print(f"[email] FAILED to {to}. "
-                  f"Status {response.status_code}: {response.text[:200]}")
+            print(f"[email] FAILED to {to}. {response.status_code}: {response.text[:150]}")
             return False
         except Exception as e:
             print(f"[email] FAILED to {to}: {type(e).__name__}: {e}")
             return False
 
-    # ------------------------------------------------------------------ queue
+    def send(self, to: str, subject: str, body: str) -> bool:
+        if not to:
+            return False
+        if not _is_real_email(to):
+            print(f"[email] (skipped - not a real address) {to}")
+            return True
+        if not self.enabled:
+            print(f"[email] (dry-run) to={to} subject={subject}")
+            return True
+
+        t = threading.Thread(
+            target=self._send_sync, args=(to, subject, body), daemon=True
+        )
+        t.start()
+        return True
+
     def queue(self, notification) -> None:
-        """Enqueue an email derived from a Notification object."""
-        self._queue.append(notification)
-
-    def flush(self) -> int:
-        """Send all queued emails. Returns count sent."""
-        items = list(self._queue)
-        self._queue.clear()
-        sent = 0
-        for n in items:
-            user_email = self._lookup_email(n)
-            if self.send(
-                user_email,
-                n.title or "Notification",
-                n.message or "",
-            ):
-                sent += 1
-        return sent
-
-    # ------------------------------------------------------------------ helper
-    def _lookup_email(self, notification):
         try:
             from Repositories.user_repository import UserRepository
             u = UserRepository().find_by_id(notification.user_id)
-            return u.email if u else ""
-        except Exception:
-            return ""
+            if u:
+                self.send(u.email, notification.title or "Notification",
+                          notification.message or "")
+        except Exception as e:
+            print(f"[email] queue failed: {e}")
+
+    def flush(self) -> int:
+        return 0

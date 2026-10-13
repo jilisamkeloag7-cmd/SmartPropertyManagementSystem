@@ -1,4 +1,3 @@
-print(">>> dashboard_screen.py V15 <<<")
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QFrame, QGridLayout, QMenu,
@@ -532,3 +531,4 @@ class DashboardScreen(QWidget):
 
     def _open_users(self):
         self.parent_window.show_users()
+

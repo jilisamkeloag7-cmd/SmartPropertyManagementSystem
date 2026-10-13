@@ -1,4 +1,3 @@
-print(">>> notification_controller.py V1 <<<")
 
 from Services.notification_service import NotificationService
 from Services.preference_service import PreferenceService

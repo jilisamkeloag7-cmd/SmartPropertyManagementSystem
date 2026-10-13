@@ -1,4 +1,3 @@
-print(">>> user_repository.py V5 <<<")
 
 from sqlalchemy import func
 from Database.connection import get_session

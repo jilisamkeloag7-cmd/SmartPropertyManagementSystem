@@ -1,4 +1,3 @@
-print(">>> property_service.py V3 <<<")
 
 from Repositories.property_repository import PropertyRepository
 from Repositories.ownership_repository import OwnershipRepository

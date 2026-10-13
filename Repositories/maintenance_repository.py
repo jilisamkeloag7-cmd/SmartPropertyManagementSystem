@@ -1,4 +1,3 @@
-print(">>> maintenance_repository.py V1 <<<")
 
 from datetime import datetime
 from Database.connection import get_session

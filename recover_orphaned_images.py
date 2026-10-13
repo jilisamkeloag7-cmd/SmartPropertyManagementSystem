@@ -1,4 +1,3 @@
-print(">>> recover_orphaned_images.py V1 <<<")
 
 """
 Recover orphaned property images.

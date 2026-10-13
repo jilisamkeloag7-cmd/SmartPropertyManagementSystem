@@ -1,4 +1,3 @@
-print(">>> viewing_request.py V1 <<<")
 
 from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey
 from sqlalchemy.orm import relationship

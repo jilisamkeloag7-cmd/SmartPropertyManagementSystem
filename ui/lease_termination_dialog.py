@@ -1,4 +1,3 @@
-print(">>> lease_termination_dialog.py V1 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox,

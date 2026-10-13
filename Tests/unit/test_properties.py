@@ -1,4 +1,3 @@
-print(">>> test_properties.py <<<")
 
 import pytest
 from Services.property_service import PropertyService

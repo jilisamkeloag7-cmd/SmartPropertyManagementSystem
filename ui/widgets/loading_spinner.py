@@ -1,4 +1,3 @@
-print(">>> loading_spinner.py V1 <<<")
 
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
 from PySide6.QtCore import Qt, QTimer, QRect

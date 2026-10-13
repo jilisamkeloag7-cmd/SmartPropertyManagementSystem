@@ -1,10 +1,10 @@
-print(">>> property_card.py V4 <<<")
 
 import os
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
+from ui.widgets.image_cache import load_pixmap
 from ui import theme
 from Controllers.property_controller import PropertyController
 from Controllers.review_controller import ReviewController
@@ -31,14 +31,16 @@ class PropertyCard(QFrame):
         self.setFixedSize(CARD_W, CARD_H)
         self.setStyleSheet(f"""
             PropertyCard {{
-                background: {theme.BG_CARD};
-                border: 1px solid {theme.BORDER};
-                border-radius: {theme.RADIUS_LG}px;
+            background: {theme.BG_CARD};
+            border: 1px solid {theme.BORDER};
+            border-left: 3px solid {theme.PRIMARY};
+            border-radius: {theme.RADIUS_LG}px;
             }}
-            PropertyCard:hover {{
-                border-color: {theme.PRIMARY};
-            }}
-        """)
+        PropertyCard:hover {{
+           border-color: {theme.PRIMARY};
+           background: {theme.PRIMARY_SOFT};
+        }}
+    """)
         self.setCursor(Qt.PointingHandCursor)
 
         outer = QVBoxLayout(self)
@@ -65,8 +67,8 @@ class PropertyCard(QFrame):
         except Exception:
             pass
 
-        if img_path and os.path.isfile(img_path):
-            pix = QPixmap(img_path)
+        if img_path:
+            pix = load_pixmap(img_path)
             if not pix.isNull():
                 scaled = pix.scaled(
                     CARD_W, IMAGE_H, Qt.KeepAspectRatioByExpanding,

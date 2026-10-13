@@ -1,4 +1,3 @@
-print(">>> maintenance_controller.py V1 <<<")
 
 from Services.maintenance_service import MaintenanceService
 

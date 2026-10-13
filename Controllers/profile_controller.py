@@ -1,4 +1,3 @@
-print(">>> profile_controller.py V1 <<<")
 
 from Services.profile_service import ProfileService
 

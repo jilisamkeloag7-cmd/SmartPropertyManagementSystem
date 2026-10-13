@@ -1,4 +1,3 @@
-print(">>> test_payments.py <<<")
 
 from datetime import date, timedelta
 from Services.property_service import PropertyService

@@ -1,4 +1,3 @@
-print(">>> lease.py V2 <<<")
 
 from sqlalchemy import (Column, Integer, String, Float, Date, DateTime,
                          Boolean, Text, ForeignKey)

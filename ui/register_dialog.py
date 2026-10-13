@@ -1,4 +1,3 @@
-print(">>> register_dialog.py V2 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,

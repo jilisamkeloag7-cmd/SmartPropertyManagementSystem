@@ -1,4 +1,3 @@
-print(">>> lease_application_dialog.py V1 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QTextEdit, QSpinBox,

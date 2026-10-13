@@ -1,4 +1,3 @@
-print(">>> Models/__init__.py V6 <<<")
 
 from Models.user import User
 from Models.property import Property

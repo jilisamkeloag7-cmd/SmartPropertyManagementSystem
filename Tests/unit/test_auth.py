@@ -1,4 +1,3 @@
-print(">>> test_auth.py <<<")
 
 import pytest
 from Services.security import hash_password, verify_password

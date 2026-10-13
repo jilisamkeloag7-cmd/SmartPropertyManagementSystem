@@ -1,4 +1,3 @@
-print(">>> styles.py V4 <<<")
 
 from PySide6.QtWidgets import QApplication
 from ui import theme
@@ -8,6 +7,9 @@ def apply_styles(window):
     qss = f"""
         QMainWindow, QDialog {{
             background-color: {theme.BG_APP};
+        }}
+        QHeaderView::section {{
+            padding: 8px 10px;
         }}
         QWidget {{
             font-family: {theme.FONT_FAMILY};

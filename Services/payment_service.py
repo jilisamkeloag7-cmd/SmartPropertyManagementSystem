@@ -1,4 +1,3 @@
-print(">>> payment_service.py V5 <<<")
 
 from datetime import date, datetime
 from Repositories.payment_repository import PaymentRepository
@@ -7,13 +6,15 @@ from Repositories.property_repository import PropertyRepository
 from Repositories.user_repository import UserRepository
 from Repositories.ownership_repository import OwnershipRepository
 from Services.notification_service import NotificationService
+from Database.connection import get_session
+from Models.lease import Lease
+from Models.property import Property
+from Models.user import User
 
 
 WRITE_ROLES   = {"Administrator", "Property Manager"}
 CONFIRM_ROLES = {"Administrator", "Property Manager"}
 ADMIN_ONLY    = {"Administrator"}
-
-# Roles that should receive broadcast notifications for payment events
 BROADCAST_ROLES = {"Administrator", "Property Manager"}
 
 
@@ -45,6 +46,19 @@ class PaymentService:
             return False, "Only administrators can use the direct mark-paid action."
         return True, None
 
+    # ------------------------------------------------------------------ batch prefetch
+    @staticmethod
+    def _prefetch_lookups():
+        """Fetch all leases, properties and users in 3 queries total."""
+        db = get_session()
+        try:
+            leases = {l.lease_id: l for l in db.query(Lease).all()}
+            props = {p.property_id: p for p in db.query(Property).all()}
+            users = {u.user_id: u for u in db.query(User).all()}
+            return leases, props, users
+        finally:
+            db.close()
+
     @staticmethod
     def _to_dict(payment, lease=None, prop=None, tenant=None):
         return {
@@ -63,7 +77,14 @@ class PaymentService:
             "payment_reference": payment.payment_reference or "",
         }
 
-    def _enrich(self, payment):
+    def _enrich(self, payment, leases_by_id, props_by_id, users_by_id):
+        lease = leases_by_id.get(payment.lease_id)
+        prop = props_by_id.get(lease.property_id) if lease else None
+        tenant = users_by_id.get(lease.tenant_id) if lease else None
+        return self._to_dict(payment, lease, prop, tenant)
+
+    def _enrich_one(self, payment):
+        """Single-item enrich for non-list operations (still 3 queries, fine)."""
         lease = self.leases.find_by_id(payment.lease_id)
         prop = self.properties.find_by_id(lease.property_id) if lease else None
         tenant = self.users.find_by_id(lease.tenant_id) if lease else None
@@ -72,62 +93,31 @@ class PaymentService:
     # ------------------------------------------------------------------ broadcast helper
     def _broadcast_payment_event(self, payment, event_type, title, message,
                                   priority="Normal", exclude_user_id=None):
-        """
-        Send a notification to every party related to a payment:
-        - The tenant on the lease
-        - The property owner(s)
-        - Every administrator
-        - Every property manager
-
-        Duplicate user_ids are de-duplicated so no one gets the notification twice.
-        """
         notified = set()
-
         lease = self.leases.find_by_id(payment.lease_id)
         if not lease:
-            print(f"[payment-broadcast] Lease #{payment.lease_id} not found — aborting")
             return
 
-        # 1. Tenant
         if lease.tenant_id and lease.tenant_id != exclude_user_id:
-            self.notifications.emit(
-                user_id=lease.tenant_id,
-                type=event_type,
-                title=title,
-                message=message,
-                priority=priority,
-            )
+            self.notifications.emit(lease.tenant_id, event_type, title,
+                                     message, priority)
             notified.add(lease.tenant_id)
 
-        # 2. Property owner(s)
         for o in self.ownerships.list_for_property(lease.property_id):
             if o.user_id in notified or o.user_id == exclude_user_id:
                 continue
-            self.notifications.emit(
-                user_id=o.user_id,
-                type=event_type,
-                title=title,
-                message=message,
-                priority=priority,
-            )
+            self.notifications.emit(o.user_id, event_type, title,
+                                     message, priority)
             notified.add(o.user_id)
 
-        # 3. Administrators + Property Managers
         for u in self.users.list_all():
             if u.role.value not in BROADCAST_ROLES:
                 continue
             if u.user_id in notified or u.user_id == exclude_user_id:
                 continue
-            self.notifications.emit(
-                user_id=u.user_id,
-                type=event_type,
-                title=title,
-                message=message,
-                priority=priority,
-            )
+            self.notifications.emit(u.user_id, event_type, title,
+                                     message, priority)
             notified.add(u.user_id)
-
-        print(f"[payment-broadcast] '{title}' sent to {len(notified)} user(s)")
 
     # ------------------------------------------------------------------ reads
     def list_payments(self, filters: dict | None = None,
@@ -141,21 +131,24 @@ class PaymentService:
         role = (session_user or {}).get("role", "")
         uid = (session_user or {}).get("user_id")
 
+        # ---- prefetch once
+        leases_by_id, props_by_id, users_by_id = self._prefetch_lookups()
+
+        # ---- role scoping
         if role == "Tenant" and uid:
-            allowed = {l.lease_id for l in self.leases.list_for_tenant(uid)}
+            allowed = {l.lease_id for l in leases_by_id.values()
+                       if l.tenant_id == uid}
             rows = [p for p in rows if p.lease_id in allowed]
         elif role == "Owner" and uid:
             owned_pids = set(self.ownerships.property_ids_for_owner(uid))
-            allowed = set()
-            for p in rows:
-                lease = self.leases.find_by_id(p.lease_id)
-                if lease and lease.property_id in owned_pids:
-                    allowed.add(p.lease_id)
+            allowed = {l.lease_id for l in leases_by_id.values()
+                       if l.property_id in owned_pids}
             rows = [p for p in rows if p.lease_id in allowed]
 
+        # ---- filter + enrich (all in memory now)
         out = []
         for p in rows:
-            d = self._enrich(p)
+            d = self._enrich(p, leases_by_id, props_by_id, users_by_id)
             if status_filter and status_filter != "All" and d["status"] != status_filter:
                 continue
             if query:
@@ -167,9 +160,9 @@ class PaymentService:
 
     def get_payment(self, payment_id: int):
         p = self.payments.find_by_id(payment_id)
-        return self._enrich(p) if p else None
+        return self._enrich_one(p) if p else None
 
-    # ------------------------------------------------------------------ manager writes
+    # ------------------------------------------------------------------ writes
     def create_payment(self, data: dict, session_user: dict):
         ok, err = self._assert_write_permission(session_user)
         if not ok:
@@ -182,7 +175,6 @@ class PaymentService:
             return False, "Invalid numeric value."
 
         due_date = data.get("due_date")
-
         if amount <= 0:
             return False, "Amount must be greater than zero."
         if not due_date:
@@ -196,10 +188,6 @@ class PaymentService:
         return True, f"Payment #{p.payment_id} created."
 
     def mark_paid(self, payment_id: int, paid_date, session_user: dict):
-        """
-        Direct mark-paid — ADMIN ONLY.
-        Broadcasts to every party related to the payment.
-        """
         ok, err = self._assert_admin(session_user)
         if not ok:
             return False, err
@@ -214,18 +202,12 @@ class PaymentService:
             paid_date = date.today()
 
         self.payments.mark_paid(payment_id, paid_date)
-
         self._broadcast_payment_event(
             payment=payment,
             event_type="payment_paid",
             title=f"Payment #{payment_id} marked as Paid",
-            message=(
-                f"Payment #{payment_id} of R{payment.amount:,.2f} has been "
-                f"marked as Paid by an administrator."
-            ),
-            priority="Normal",
+            message=f"Payment #{payment_id} of R{payment.amount:,.2f} marked as Paid.",
         )
-
         return True, f"Payment #{payment_id} marked as Paid."
 
     def check_overdue(self) -> int:
@@ -235,26 +217,20 @@ class PaymentService:
         for payment in self.payments.find_pending():
             if payment.due_date and payment.due_date < today:
                 self.payments.set_status(payment.payment_id, "Overdue")
-
                 self._broadcast_payment_event(
                     payment=payment,
                     event_type="payment_overdue",
                     title=f"Payment #{payment.payment_id} overdue",
-                    message=(
-                        f"Payment #{payment.payment_id} of "
-                        f"R{payment.amount:,.2f} was due on {payment.due_date}."
-                    ),
+                    message=f"Payment #{payment.payment_id} of R{payment.amount:,.2f} "
+                            f"was due on {payment.due_date}.",
                     priority="High",
                 )
                 newly_overdue += 1
-
         return newly_overdue
 
-    # ------------------------------------------------------------------ tenant self-service
     def tenant_mark_paid(self, payment_id: int, reference: str, session_user: dict):
         role = session_user.get("role", "")
         uid = session_user.get("user_id")
-
         if role != "Tenant":
             return False, "Only tenants can use this action."
 
@@ -269,30 +245,25 @@ class PaymentService:
         if payment.status == "Paid":
             return False, "This payment has already been confirmed as paid."
         if payment.status == "Awaiting Confirmation":
-            return False, "You have already marked this payment. Awaiting manager confirmation."
+            return False, "You have already marked this payment."
 
         reference = (reference or "").strip()
         if len(reference) < 3:
-            return False, "Please provide a payment reference or note (at least 3 characters)."
+            return False, "Please provide a reference (at least 3 characters)."
 
         self.payments.set_tenant_claim(payment_id, reference)
-
         self._broadcast_payment_event(
             payment=payment,
             event_type="payment_awaiting_confirmation",
             title=f"Payment #{payment_id} awaiting confirmation",
-            message=(
-                f"{session_user.get('name', 'Tenant')} has marked "
-                f"payment #{payment_id} (R{payment.amount:,.2f}) as paid. "
-                f"Reference: {reference[:120]}"
-            ),
+            message=f"{session_user.get('name', 'Tenant')} marked payment "
+                    f"#{payment_id} (R{payment.amount:,.2f}) as paid. "
+                    f"Reference: {reference[:120]}",
             priority="High",
         )
-
         return True, "Payment marked. Awaiting manager confirmation."
 
     def manager_confirm(self, payment_id: int, session_user: dict):
-        """Confirm a tenant-submitted payment claim. Broadcasts to all parties."""
         ok, err = self._assert_confirm_permission(session_user)
         if not ok:
             return False, err
@@ -301,22 +272,17 @@ class PaymentService:
         if not payment:
             return False, "Payment not found."
         if payment.status != "Awaiting Confirmation":
-            return False, f"Payment status is '{payment.status}' — nothing to confirm."
+            return False, f"Payment status is '{payment.status}'."
 
         self.payments.mark_paid(payment_id, date.today())
-
         self._broadcast_payment_event(
             payment=payment,
             event_type="payment_confirmed",
             title=f"Payment #{payment_id} confirmed",
-            message=(
-                f"Payment #{payment_id} of R{payment.amount:,.2f} has been "
-                f"confirmed as paid by {session_user.get('name', 'management')}."
-            ),
-            priority="Normal",
+            message=f"Payment #{payment_id} of R{payment.amount:,.2f} "
+                    f"was confirmed by {session_user.get('name', 'management')}.",
         )
-
-        return True, f"Payment #{payment_id} confirmed as paid."
+        return True, f"Payment #{payment_id} confirmed."
 
     def manager_reject(self, payment_id: int, reason: str, session_user: dict):
         ok, err = self._assert_confirm_permission(session_user)
@@ -331,19 +297,15 @@ class PaymentService:
 
         reason = (reason or "").strip()
         if len(reason) < 3:
-            return False, "Please provide a reason (at least 3 characters)."
+            return False, "Please provide a reason."
 
         self.payments.clear_tenant_claim(payment_id, new_status="Pending")
-
         self._broadcast_payment_event(
             payment=payment,
             event_type="payment_rejected",
             title=f"Payment #{payment_id} claim rejected",
-            message=(
-                f"Payment claim for #{payment_id} was not confirmed. "
-                f"Reason: {reason[:150]}"
-            ),
+            message=f"Payment claim for #{payment_id} was not confirmed. "
+                    f"Reason: {reason[:150]}",
             priority="High",
         )
-
         return True, "Payment claim rejected."

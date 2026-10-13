@@ -1,4 +1,3 @@
-print(">>> leases_screen.py V6 <<<")
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,

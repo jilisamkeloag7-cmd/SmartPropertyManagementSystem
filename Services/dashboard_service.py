@@ -1,4 +1,3 @@
-print(">>> dashboard_service.py V1 <<<")
 
 from datetime import date, timedelta
 from Repositories.property_repository import PropertyRepository

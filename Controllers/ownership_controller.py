@@ -1,4 +1,3 @@
-print(">>> ownership_controller.py V1 <<<")
 
 from Services.ownership_service import OwnershipService
 

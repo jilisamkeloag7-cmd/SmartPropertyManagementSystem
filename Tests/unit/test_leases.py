@@ -1,4 +1,3 @@
-print(">>> test_leases.py <<<")
 
 from datetime import date, timedelta
 from Services.lease_service import LeaseService

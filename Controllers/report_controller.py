@@ -1,4 +1,3 @@
-print(">>> report_controller.py V2 <<<")
 
 from Services.report_service import ReportService
 

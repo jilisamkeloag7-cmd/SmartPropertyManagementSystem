@@ -1,4 +1,3 @@
-print(">>> main_window.py V14 <<<")
 
 from PySide6.QtWidgets import (QMainWindow, QStackedWidget, QVBoxLayout,
                                 QHBoxLayout, QWidget, QGraphicsOpacityEffect)

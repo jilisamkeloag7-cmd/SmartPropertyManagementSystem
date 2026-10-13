@@ -1,4 +1,3 @@
-print(">>> sidebar.py V7 <<<")
 
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QWidget, QMessageBox)
@@ -6,7 +5,7 @@ from PySide6.QtCore import Qt
 from ui import theme
 
 
-SIDEBAR_W = 220
+SIDEBAR_W = 200
 
 
 NAV_ITEMS = [
@@ -89,7 +88,7 @@ class Sidebar(QFrame):
         logo_layout.setContentsMargins(20, 22, 20, 22)
         logo_layout.setSpacing(10)
 
-        logo_icon = QLabel("🏢")
+        logo_icon = QLabel("🏘")
         logo_icon.setStyleSheet("font-size: 22px;")
         logo_layout.addWidget(logo_icon)
 
@@ -274,3 +273,4 @@ class Sidebar(QFrame):
             f"Theme set to {new}.\n\nPlease close and reopen the application "
             f"to apply the new theme."
         )
+

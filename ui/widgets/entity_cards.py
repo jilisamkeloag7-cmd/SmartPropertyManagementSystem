@@ -1,4 +1,3 @@
-print(">>> entity_cards.py V1 <<<")
 
 from datetime import date
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,

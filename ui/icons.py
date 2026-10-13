@@ -1,4 +1,3 @@
-print(">>> icons.py V1 <<<")
 
 """
 Central icon registry.

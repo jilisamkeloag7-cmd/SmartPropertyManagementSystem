@@ -1,4 +1,3 @@
-print(">>> payments_screen.py V6 <<<")
 
 from datetime import date
 from collections import OrderedDict

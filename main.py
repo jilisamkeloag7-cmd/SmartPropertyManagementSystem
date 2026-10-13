@@ -1,4 +1,3 @@
-print(">>> main.py V5 <<<")
 
 import sys
 from PySide6.QtWidgets import QApplication, QMessageBox

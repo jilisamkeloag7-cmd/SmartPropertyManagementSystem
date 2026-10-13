@@ -1,4 +1,3 @@
-print(">>> auth_controller.py V3 <<<")
 
 from Services.auth_service import AuthService
 

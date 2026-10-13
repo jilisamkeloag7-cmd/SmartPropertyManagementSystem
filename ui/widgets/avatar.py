@@ -1,22 +1,15 @@
-print(">>> avatar.py V1 <<<")
 
 import os
 from PySide6.QtWidgets import QLabel
 from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QPixmap, QPainter, QColor, QFont, QBrush, QPen, QPainterPath
 from ui import theme
+from ui.widgets.image_cache import load_pixmap
 
 
-# Palette for initials fallback — deterministic per user
 _INITIAL_COLOURS = [
-    "#3b82f6",  # blue
-    "#8b5cf6",  # violet
-    "#10b981",  # emerald
-    "#f59e0b",  # amber
-    "#ec4899",  # pink
-    "#0ea5e9",  # sky
-    "#ef4444",  # red
-    "#14b8a6",  # teal
+    "#3b82f6", "#8b5cf6", "#10b981", "#f59e0b",
+    "#ec4899", "#0ea5e9", "#ef4444", "#14b8a6",
 ]
 
 
@@ -35,23 +28,20 @@ def _initials(name: str) -> str:
     return "?"
 
 
-def make_avatar_pixmap(image_path: str | None, name: str,
-                        size: int = 40) -> QPixmap:
-    """Return a circular QPixmap — image if available, else initials on colour."""
+def make_avatar_pixmap(image_path: str | None, name: str, size: int = 40) -> QPixmap:
     pix = QPixmap(size, size)
     pix.fill(Qt.transparent)
 
     painter = QPainter(pix)
     painter.setRenderHint(QPainter.Antialiasing, True)
 
-    # Circular clip path
     path = QPainterPath()
     path.addEllipse(0, 0, size, size)
     painter.setClipPath(path)
 
     loaded = False
-    if image_path and os.path.isfile(image_path):
-        img = QPixmap(image_path)
+    if image_path:
+        img = load_pixmap(image_path)
         if not img.isNull():
             scaled = img.scaled(size, size,
                                 Qt.KeepAspectRatioByExpanding,
@@ -67,18 +57,15 @@ def make_avatar_pixmap(image_path: str | None, name: str,
         painter.setBrush(QBrush(QColor(colour)))
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(0, 0, size, size)
-
         painter.setPen(QColor(theme.TEXT_WHITE))
         font = QFont()
         font.setPointSize(max(10, size // 3))
         font.setBold(True)
         painter.setFont(font)
-        painter.drawText(QRect(0, 0, size, size),
-                         Qt.AlignCenter, _initials(name))
+        painter.drawText(QRect(0, 0, size, size), Qt.AlignCenter, _initials(name))
 
     painter.end()
 
-    # Optional thin border
     bordered = QPixmap(size, size)
     bordered.fill(Qt.transparent)
     p2 = QPainter(bordered)
@@ -93,8 +80,6 @@ def make_avatar_pixmap(image_path: str | None, name: str,
 
 
 class AvatarLabel(QLabel):
-    """A round avatar label that can be resized and updated."""
-
     def __init__(self, name: str = "", image_path: str | None = None,
                  size: int = 40, parent=None):
         super().__init__(parent)

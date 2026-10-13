@@ -1,4 +1,3 @@
-print(">>> review_service.py V1 <<<")
 
 from Repositories.review_repository import ReviewRepository
 from Repositories.property_repository import PropertyRepository

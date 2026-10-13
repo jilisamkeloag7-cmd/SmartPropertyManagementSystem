@@ -1,4 +1,3 @@
-print(">>> maintenance_service.py V2 <<<")
 
 from datetime import datetime
 from Repositories.maintenance_repository import MaintenanceRepository
@@ -7,18 +6,19 @@ from Repositories.lease_repository import LeaseRepository
 from Repositories.user_repository import UserRepository
 from Repositories.ownership_repository import OwnershipRepository
 from Services.notification_service import NotificationService
+from Database.connection import get_session
+from Models.property import Property
+from Models.user import User
 
 
 VALID_PRIORITIES = {"Low", "Medium", "High", "Urgent"}
 VALID_STATUSES   = {"Open", "In Progress", "Resolved", "Closed"}
-
 ALLOWED_TRANSITIONS = {
     "Open":         {"In Progress"},
     "In Progress":  {"Resolved"},
     "Resolved":     {"Closed", "In Progress"},
     "Closed":       set(),
 }
-
 MANAGER_ROLES       = {"Administrator", "Property Manager"}
 STATUS_CHANGE_ROLES = {"Administrator", "Property Manager", "Owner"}
 
@@ -32,7 +32,16 @@ class MaintenanceService:
         self.ownerships = OwnershipRepository()
         self.notifications = NotificationService()
 
-    # ------------------------------------------------------------------ helpers
+    @staticmethod
+    def _prefetch_lookups():
+        db = get_session()
+        try:
+            props = {p.property_id: p for p in db.query(Property).all()}
+            users = {u.user_id: u for u in db.query(User).all()}
+            return props, users
+        finally:
+            db.close()
+
     def _recalculate_property_status(self, property_id: int):
         if self.leases.has_active_lease(property_id):
             new_status = "Occupied"
@@ -42,9 +51,9 @@ class MaintenanceService:
             new_status = "Available"
         self.properties.set_status(property_id, new_status)
 
-    def _enrich(self, req):
-        prop = self.properties.find_by_id(req.property_id)
-        submitter = self.users.find_by_id(req.submitted_by)
+    def _enrich(self, req, props_by_id, users_by_id):
+        prop = props_by_id.get(req.property_id)
+        submitter = users_by_id.get(req.submitted_by)
         return {
             "request_id": req.request_id,
             "property_id": req.property_id,
@@ -58,6 +67,13 @@ class MaintenanceService:
             "created_at": req.created_at,
             "completed_at": req.completed_at,
         }
+
+    def _enrich_one(self, req):
+        prop = self.properties.find_by_id(req.property_id)
+        submitter = self.users.find_by_id(req.submitted_by)
+        return self._enrich(req, 
+                            {req.property_id: prop} if prop else {},
+                            {req.submitted_by: submitter} if submitter else {})
 
     # ------------------------------------------------------------------ reads
     def list_requests(self, filters: dict | None = None,
@@ -74,23 +90,21 @@ class MaintenanceService:
             rows = self.requests.list_for_submitter(uid)
         elif role == "Owner" and uid:
             owned_pids = set(self.ownerships.property_ids_for_owner(uid))
-            rows = [r for r in self.requests.list_all()
-                    if r.property_id in owned_pids]
+            rows = [r for r in self.requests.list_all() if r.property_id in owned_pids]
         else:
             rows = self.requests.list_all()
 
+        props_by_id, users_by_id = self._prefetch_lookups()
+
         out = []
         for r in rows:
-            d = self._enrich(r)
+            d = self._enrich(r, props_by_id, users_by_id)
             if status_filter != "All" and d["status"] != status_filter:
                 continue
             if priority_filter != "All" and d["priority"] != priority_filter:
                 continue
             if query:
-                haystack = (
-                    f"{d['property_address']} {d['submitter_name']} "
-                    f"{d['description']}"
-                ).lower()
+                haystack = f"{d['property_address']} {d['submitter_name']} {d['description']}".lower()
                 if query not in haystack:
                     continue
             out.append(d)
@@ -98,7 +112,7 @@ class MaintenanceService:
 
     def get_request(self, request_id: int):
         r = self.requests.find_by_id(request_id)
-        return self._enrich(r) if r else None
+        return self._enrich_one(r) if r else None
 
     # ------------------------------------------------------------------ writes
     def submit_request(self, data: dict, session_user: dict):
@@ -122,51 +136,39 @@ class MaintenanceService:
         uid = session_user.get("user_id")
         role = session_user.get("role", "")
 
-        # Tenants must have an active lease for the property
         if role == "Tenant":
             my_leases = self.leases.list_for_tenant(uid)
-            has_active = any(
-                l.property_id == property_id and l.status == "Active"
-                for l in my_leases
-            )
+            has_active = any(l.property_id == property_id and l.status == "Active"
+                             for l in my_leases)
             if not has_active:
                 return False, "You can only report maintenance for properties you lease."
 
-        # Owners must own the property
         if role == "Owner":
             owned_pids = set(self.ownerships.property_ids_for_owner(uid))
             if property_id not in owned_pids:
                 return False, "You can only report maintenance on properties you own."
 
         req = self.requests.create(
-            property_id=property_id,
-            submitted_by=uid,
-            description=description,
-            priority=priority,
-            status="Open",
+            property_id=property_id, submitted_by=uid,
+            description=description, priority=priority, status="Open",
         )
         self._recalculate_property_status(property_id)
 
         for u in self.users.list_all():
             if u.role.value in MANAGER_ROLES:
                 self.notifications.emit(
-                    user_id=u.user_id,
-                    type="maintenance_new",
-                    title="New maintenance request",
-                    message=(
-                        f"Request #{req.request_id} submitted for "
-                        f"{prop.address}: {description[:60]}"
-                    ),
-                    priority="Normal",
+                    u.user_id, "maintenance_new",
+                    "New maintenance request",
+                    f"Request #{req.request_id} submitted for {prop.address}: "
+                    f"{description[:60]}",
+                    "Normal",
                 )
-
         return True, f"Request #{req.request_id} submitted."
 
     def update_status(self, request_id: int, new_status: str, session_user: dict):
         role = session_user.get("role", "")
         if role not in STATUS_CHANGE_ROLES:
-            return False, "Only managers, administrators, or owners can update request status."
-
+            return False, "Only managers, admins, or owners can update status."
         if new_status not in VALID_STATUSES:
             return False, f"Invalid status: {new_status}."
 
@@ -174,7 +176,6 @@ class MaintenanceService:
         if not req:
             return False, "Request not found."
 
-        # Owner scope: only on their own properties
         if role == "Owner":
             uid = session_user.get("user_id")
             owned_pids = set(self.ownerships.property_ids_for_owner(uid))
@@ -192,11 +193,9 @@ class MaintenanceService:
             self._recalculate_property_status(req.property_id)
 
         self.notifications.emit(
-            user_id=req.submitted_by,
-            type="maintenance_update",
-            title=f"Request #{request_id} → {new_status}",
-            message=f"Your maintenance request status changed to '{new_status}'.",
-            priority="Normal",
+            req.submitted_by, "maintenance_update",
+            f"Request #{request_id} → {new_status}",
+            f"Your maintenance request status changed to '{new_status}'.",
+            "Normal",
         )
-
         return True, f"Request #{request_id} → {new_status}."

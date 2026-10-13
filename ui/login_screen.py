@@ -1,4 +1,3 @@
-print(">>> login_screen.py V7 <<<")
 
 import os
 import sys

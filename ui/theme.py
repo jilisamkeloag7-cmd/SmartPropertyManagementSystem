@@ -1,4 +1,3 @@
-print(">>> theme.py V3 <<<")
 
 """
 Central theme for the Smart Property Management System.

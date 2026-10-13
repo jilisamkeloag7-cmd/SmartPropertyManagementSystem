@@ -1,4 +1,3 @@
-print(">>> property_images_dialog.py V1 <<<")
 
 import os
 from PySide6.QtWidgets import (

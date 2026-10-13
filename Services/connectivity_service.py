@@ -1,4 +1,3 @@
-print(">>> connectivity_service.py V1 <<<")
 
 import socket
 from Database.config import IS_CLOUD, DATABASE_URL

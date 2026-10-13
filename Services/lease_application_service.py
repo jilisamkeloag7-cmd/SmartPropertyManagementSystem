@@ -1,4 +1,3 @@
-print(">>> lease_application_service.py V2 <<<")
 
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
@@ -9,10 +8,12 @@ from Repositories.user_repository import UserRepository
 from Repositories.ownership_repository import OwnershipRepository
 from Services.lease_service import LeaseService
 from Services.notification_service import NotificationService
+from Database.connection import get_session
+from Models.property import Property
+from Models.user import User
 
 
 MANAGER_ROLES = {"Administrator", "Property Manager"}
-
 MIN_DURATION_MONTHS = 1
 MAX_DURATION_MONTHS = 36
 MAX_START_DAYS_AHEAD = 90
@@ -28,10 +29,19 @@ class LeaseApplicationService:
         self.lease_service = LeaseService()
         self.notifications = NotificationService()
 
-    # ------------------------------------------------------------------ helpers
-    def _enrich(self, a):
-        prop = self.properties.find_by_id(a.property_id)
-        tenant = self.users.find_by_id(a.tenant_id)
+    @staticmethod
+    def _prefetch():
+        db = get_session()
+        try:
+            props = {p.property_id: p for p in db.query(Property).all()}
+            users = {u.user_id: u for u in db.query(User).all()}
+            return props, users
+        finally:
+            db.close()
+
+    def _enrich(self, a, props_by_id, users_by_id):
+        prop = props_by_id.get(a.property_id)
+        tenant = users_by_id.get(a.tenant_id)
         return {
             "application_id": a.application_id,
             "property_id": a.property_id,
@@ -50,8 +60,15 @@ class LeaseApplicationService:
             "decided_at": a.decided_at,
         }
 
+    def _enrich_one(self, a):
+        prop = self.properties.find_by_id(a.property_id)
+        tenant = self.users.find_by_id(a.tenant_id)
+        return self._enrich(a,
+                            {a.property_id: prop} if prop else {},
+                            {a.tenant_id: tenant} if tenant else {})
+
     @staticmethod
-    def _compute_end_date(start: date, duration_months: int) -> date:
+    def _compute_end_date(start, duration_months):
         return start + relativedelta(months=duration_months)
 
     # ------------------------------------------------------------------ reads
@@ -68,15 +85,16 @@ class LeaseApplicationService:
             rows = self.applications.list_for_tenant(uid)
         elif role == "Owner" and uid:
             owned_pids = set(self.ownerships.property_ids_for_owner(uid))
-            rows = [a for a in self.applications.list_all()
-                    if a.property_id in owned_pids]
+            rows = [a for a in self.applications.list_all() if a.property_id in owned_pids]
         else:
             rows = self.applications.list_all()
 
+        props_by_id, users_by_id = self._prefetch()
+
         out = []
         for a in rows:
-            d = self._enrich(a)
-            if status_filter and status_filter != "All" and d["status"] != status_filter:
+            d = self._enrich(a, props_by_id, users_by_id)
+            if status_filter != "All" and d["status"] != status_filter:
                 continue
             if query:
                 haystack = f"{d['property_address']} {d['tenant_name']} {d['tenant_email']}".lower()
@@ -85,191 +103,129 @@ class LeaseApplicationService:
             out.append(d)
         return out
 
-    def get_application(self, application_id: int):
+    def get_application(self, application_id):
         a = self.applications.find_by_id(application_id)
-        return self._enrich(a) if a else None
+        return self._enrich_one(a) if a else None
 
     # ------------------------------------------------------------------ tenant submit
-    def apply(self, property_id: int, preferred_start: date,
-              duration_months: int, message: str, session_user: dict):
+    def apply(self, property_id, preferred_start, duration_months, message, session_user):
         role = session_user.get("role", "")
         uid = session_user.get("user_id")
-
         if role != "Tenant":
-            return False, "Only tenants can apply for leases."
-
+            return False, "Only tenants can apply."
         prop = self.properties.find_by_id(property_id)
         if not prop:
             return False, "Property not found."
-
         if prop.status != "Available":
-            return False, f"This property is {prop.status.lower()} — no longer accepting applications."
-
+            return False, f"This property is {prop.status.lower()}."
         if not preferred_start:
-            return False, "Preferred start date is required."
-
+            return False, "Preferred start is required."
         today = date.today()
         if preferred_start < today:
-            return False, "Preferred start date cannot be in the past."
-
+            return False, "Start cannot be in the past."
         if preferred_start > today + timedelta(days=MAX_START_DAYS_AHEAD):
-            return False, f"Start date cannot be more than {MAX_START_DAYS_AHEAD} days away."
-
+            return False, f"Start cannot be more than {MAX_START_DAYS_AHEAD} days away."
         try:
             duration_months = int(duration_months)
         except (TypeError, ValueError):
             return False, "Duration must be a number."
-
         if duration_months < MIN_DURATION_MONTHS or duration_months > MAX_DURATION_MONTHS:
-            return False, f"Duration must be between {MIN_DURATION_MONTHS} and {MAX_DURATION_MONTHS} months."
-
+            return False, f"Duration must be {MIN_DURATION_MONTHS}–{MAX_DURATION_MONTHS} months."
         if self.applications.has_pending_for_property(property_id, uid):
-            return False, "You already have a pending application for this property."
-
+            return False, "You already have a pending application."
         msg = (message or "").strip()
         if len(msg) > 1000:
-            return False, "Message is too long (max 1000 characters)."
+            return False, "Message too long."
 
-        app = self.applications.create(
-            property_id=property_id,
-            tenant_id=uid,
-            preferred_start=preferred_start,
-            duration_months=duration_months,
-            message=msg or None,
-        )
-
+        app = self.applications.create(property_id, uid, preferred_start,
+                                        duration_months, msg or None)
         for u in self.users.list_all():
             if u.role.value in MANAGER_ROLES:
                 self.notifications.emit(
-                    user_id=u.user_id,
-                    type="lease_application_new",
-                    title=f"New lease application — Property #{property_id}",
-                    message=(
-                        f"{session_user.get('name', 'Tenant')} applied for "
-                        f"{prop.address} starting {preferred_start.isoformat()} "
-                        f"for {duration_months} month(s)."
-                    ),
-                    priority="High",
+                    u.user_id, "lease_application_new",
+                    f"New lease application — Property #{property_id}",
+                    f"{session_user.get('name', 'Tenant')} applied for {prop.address} "
+                    f"starting {preferred_start.isoformat()} for {duration_months} mo.",
+                    "High",
                 )
+        return True, "Application submitted."
 
-        return True, "Application submitted. Management will review it shortly."
-
-    # ------------------------------------------------------------------ manager decision
-    def approve(self, application_id: int, note: str, session_user: dict):
-        if (session_user or {}).get("role") not in MANAGER_ROLES:
-            return False, "Only managers or administrators can approve applications."
-
+    def approve(self, application_id, note, session_user):
+        if session_user.get("role") not in MANAGER_ROLES:
+            return False, "Only managers can approve."
         a = self.applications.find_by_id(application_id)
         if not a:
             return False, "Application not found."
         if a.status != "Pending":
-            return False, f"Application is already {a.status}."
-
+            return False, f"Already {a.status}."
         prop = self.properties.find_by_id(a.property_id)
         if not prop:
             return False, "Property not found."
-
         if prop.status != "Available":
-            self.applications.set_status(
-                application_id, "Declined",
-                decision_note=f"Property is no longer available ({prop.status.lower()}).",
-            )
-            self.notifications.emit(
-                user_id=a.tenant_id,
-                type="lease_application_declined",
-                title=f"Application declined — {prop.address}",
-                message=f"The property is no longer available ({prop.status.lower()}).",
-                priority="Normal",
-            )
-            return False, "Property is no longer available. Application has been declined."
-
+            self.applications.set_status(application_id, "Declined",
+                                          decision_note="Property no longer available.")
+            return False, "Property is no longer available."
         end_date = self._compute_end_date(a.preferred_start, a.duration_months)
-
         lease_data = {
-            "property_id": a.property_id,
-            "tenant_id": a.tenant_id,
-            "start_date": a.preferred_start,
-            "end_date": end_date,
-            "rent_amount": prop.listing_price if prop.listing_price else 0.0,
+            "property_id": a.property_id, "tenant_id": a.tenant_id,
+            "start_date": a.preferred_start, "end_date": end_date,
+            "rent_amount": prop.listing_price or 0.0,
         }
-
-        if not lease_data["rent_amount"] or lease_data["rent_amount"] <= 0:
-            return False, "Property has no listing price — set a price before approving."
-
+        if lease_data["rent_amount"] <= 0:
+            return False, "Property has no listing price."
         ok, msg = self.lease_service.create_lease(lease_data, session_user)
         if not ok:
-            return False, f"Failed to create lease: {msg}"
-
+            return False, f"Lease creation failed: {msg}"
         leases = self.leases.list_for_tenant(a.tenant_id)
-        active = [l for l in leases
-                  if l.property_id == a.property_id and l.status == "Active"]
+        active = [l for l in leases if l.property_id == a.property_id and l.status == "Active"]
         created_lease_id = active[0].lease_id if active else None
 
-        decision = (note or "").strip() or "Approved by management."
-        self.applications.set_status(
-            application_id, "Approved",
-            decision_note=decision,
-            created_lease_id=created_lease_id,
-        )
-
+        decision = (note or "").strip() or "Approved."
+        self.applications.set_status(application_id, "Approved",
+                                      decision_note=decision,
+                                      created_lease_id=created_lease_id)
         self.notifications.emit(
-            user_id=a.tenant_id,
-            type="lease_application_approved",
-            title=f"Application approved — {prop.address}",
-            message=(
-                f"Your lease application for {prop.address} has been approved. "
-                f"Lease #{created_lease_id} starts on {a.preferred_start.isoformat()}."
-                + (f" Note: {decision}" if note else "")
-            ),
-            priority="High",
+            a.tenant_id, "lease_application_approved",
+            f"Application approved — {prop.address}",
+            f"Your application approved. Lease #{created_lease_id} starts "
+            f"{a.preferred_start.isoformat()}.",
+            "High",
         )
-
-        other_pending = [
-            o for o in self.applications.list_pending_for_property(a.property_id)
-            if o.application_id != application_id
-        ]
-        for o in other_pending:
-            self.applications.set_status(
-                o.application_id, "Declined",
-                decision_note="Property has been leased to another applicant.",
-            )
+        for o in self.applications.list_pending_for_property(a.property_id):
+            if o.application_id == application_id:
+                continue
+            self.applications.set_status(o.application_id, "Declined",
+                                          decision_note="Property leased to another applicant.")
             self.notifications.emit(
-                user_id=o.tenant_id,
-                type="lease_application_declined",
-                title=f"Application declined — {prop.address}",
-                message="The property has been leased to another applicant.",
-                priority="Normal",
+                o.tenant_id, "lease_application_declined",
+                f"Application declined — {prop.address}",
+                "The property has been leased to another applicant.",
+                "Normal",
             )
+        return True, f"Approved. Lease #{created_lease_id} created."
 
-        return True, f"Application approved. Lease #{created_lease_id} created."
-
-    def decline(self, application_id: int, reason: str, session_user: dict):
-        if (session_user or {}).get("role") not in MANAGER_ROLES:
-            return False, "Only managers or administrators can decline applications."
-
+    def decline(self, application_id, reason, session_user):
+        if session_user.get("role") not in MANAGER_ROLES:
+            return False, "Only managers can decline."
         a = self.applications.find_by_id(application_id)
         if not a:
             return False, "Application not found."
         if a.status != "Pending":
-            return False, f"Application is already {a.status}."
-
+            return False, f"Already {a.status}."
         reason = (reason or "").strip()
         if len(reason) < 3:
-            return False, "Please provide a reason (at least 3 characters)."
-
+            return False, "Please provide a reason."
         self.applications.set_status(application_id, "Declined", decision_note=reason)
-
         prop = self.properties.find_by_id(a.property_id)
         self.notifications.emit(
-            user_id=a.tenant_id,
-            type="lease_application_declined",
-            title=f"Application declined — {prop.address if prop else 'Property'}",
-            message=f"Your lease application was declined. Reason: {reason}",
-            priority="High",
+            a.tenant_id, "lease_application_declined",
+            f"Application declined — {prop.address if prop else ''}",
+            f"Your application was declined. Reason: {reason}",
+            "High",
         )
         return True, "Application declined."
 
-    def withdraw(self, application_id: int, session_user: dict):
+    def withdraw(self, application_id, session_user):
         a = self.applications.find_by_id(application_id)
         if not a:
             return False, "Application not found."
@@ -277,7 +233,6 @@ class LeaseApplicationService:
             return False, "You can only withdraw your own applications."
         if a.status != "Pending":
             return False, f"Cannot withdraw a {a.status.lower()} application."
-
         self.applications.set_status(application_id, "Cancelled",
                                       decision_note="Withdrawn by tenant.")
         return True, "Application withdrawn."

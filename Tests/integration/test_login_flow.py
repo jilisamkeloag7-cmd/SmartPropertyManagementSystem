@@ -1,4 +1,3 @@
-print(">>> test_login_flow.py <<<")
 
 from Services.auth_service import AuthService
 

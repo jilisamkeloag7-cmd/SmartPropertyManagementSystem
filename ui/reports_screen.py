@@ -1,4 +1,3 @@
-print(">>> reports_screen.py V3 <<<")
 
 import os
 import subprocess

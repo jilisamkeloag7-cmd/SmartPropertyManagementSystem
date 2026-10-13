@@ -1,4 +1,3 @@
-print(">>> property_form_dialog.py V5 <<<")
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit, QComboBox,

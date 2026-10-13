@@ -1,4 +1,3 @@
-print(">>> lease_controller.py V2 <<<")
 
 from Services.lease_service import LeaseService
 
